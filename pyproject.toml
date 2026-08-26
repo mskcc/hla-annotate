@@ -1,0 +1,33 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "hla-annotate"
+version = "1.0.0"
+description = "Post-process HLA-HD class I output into a P-group-annotated TSV + optional HTML report"
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.11"
+dependencies = [
+    "pandas>=2.0",
+    "jinja2>=3.1",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-cov",
+]
+
+[project.scripts]
+annotate_hlahd = "hlahd_annotate.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+hlahd_annotate = ["templates/*.j2"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

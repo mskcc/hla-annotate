@@ -1,0 +1,29 @@
+A	HLA-A*02:01:01	HLA-A*03:01:01
+B	HLA-B*52:01:01	HLA-B*41:01:01
+C	HLA-C*12:02:02	HLA-C*17:01:01
+DRB1	Not typed	Not typed
+DQA1	Not typed	Not typed
+DQB1	Not typed	Not typed
+DPA1	Not typed	Not typed
+DPB1	Not typed	Not typed
+DMA	Not typed	Not typed
+DMB	Not typed	Not typed
+DOA	Not typed	Not typed
+DOB	Not typed	Not typed
+DRA	Not typed	Not typed
+DRB2	Not typed	Not typed
+DRB3	Not typed	Not typed
+DRB4	Not typed	Not typed
+DRB5	Not typed	Not typed
+DRB6	Not typed	Not typed
+DRB7	Not typed	Not typed
+DRB8	Not typed	Not typed
+DRB9	Not typed	Not typed
+E	HLA-E*01:01:01	HLA-E*01:03:02	HLA-E*01:03:01	HLA-E*01:01:02
+F	HLA-F*01:03:01	HLA-F*01:01:01
+G	HLA-G*01:01:01	-
+H	HLA-H*01:01:01	HLA-H*02:04:01
+J	HLA-J*01:01:01	-
+K	HLA-K*01:01:01	HLA-K*01:02
+L	HLA-L*01:01:01	-
+V	HLA-V*01:01:01	-

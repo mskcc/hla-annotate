@@ -1,0 +1,8 @@
+A	HLA-A*02:01:01	HLA-A*03:01:01
+B	HLA-B*18:11	HLA-B*50:58	HLA-B*18:164	HLA-B*50:58
+C	HLA-C*12:02:02	HLA-C*17:01:01
+DRB1	Not typed	Not typed
+DQA1	Not typed	Not typed
+DQB1	Not typed	Not typed
+DPA1	Not typed	Not typed
+DPB1	Not typed	Not typed
