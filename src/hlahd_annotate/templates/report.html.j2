@@ -109,7 +109,7 @@
   <strong>MULTIPLE BEST PAIRS:</strong> HLA-HD could not disambiguate between equally-scored allele pairs.<br>
   <strong>EST MISMATCH:</strong> Unexpected discrepancy between the final result allele and the alleles in the .est.txt file. Review manually.<br>
   <br>
-  <strong>INCOMPLETE COVERAGE:</strong> One or more best-pair alleles had positions in exon 2 or exon 3 with zero read coverage (incomp &gt; 0). A "(!)" marks the affected allele. Lower-confidence call &#8212; review manually.
+  <strong>INCOMPLETE COVERAGE:</strong> One or more best-pair alleles had positions in exon 2 or exon 3 that HLA-HD reported as incomplete (any incomp status, even incomp.0). A "(!)" marks the affected allele, and the breakdown gives the number of incomplete bases. Lower-confidence call &#8212; review manually.
 </div>
 
 {% if pileup %}

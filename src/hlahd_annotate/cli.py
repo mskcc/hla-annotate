@@ -12,7 +12,11 @@ Usage:
         --outdir output/
 """
 import argparse
+import sys
+from importlib.metadata import version
 from pathlib import Path
+
+import pandas as pd
 
 from hlahd_annotate.annotate import annotate_sample
 from hlahd_annotate.report import render_report
@@ -24,6 +28,8 @@ def parse_args():
     p = argparse.ArgumentParser(
         description='Annotate HLA-HD class I output with P-groups and quality flags.'
     )
+    p.add_argument('--version', action='version',
+                   version=f"%(prog)s {version('hla-annotate')}")
     p.add_argument('--result_dir', required=True, type=Path,
                    help='Directory containing <sample>_final.result.txt and <sample>_{A,B,C}.est.txt')
     p.add_argument('--sample', required=True,
@@ -44,6 +50,15 @@ def main():
     args.outdir.mkdir(parents=True, exist_ok=True)
 
     df = annotate_sample(args.result_dir, args.sample, args.pgroup_file)
+
+    incomplete = df[df['incomplete_coverage'].astype(bool)]
+    if not incomplete.empty:
+        known = incomplete['incomplete_bp'].dropna()
+        total = f"{int(known.sum())} bp" + (" (some counts unknown)" if len(known) < len(incomplete) else "")
+        print(f"INCOMPLETE COVERAGE: {len(incomplete)} allele(s), {total}", file=sys.stderr)
+        for _, r in incomplete.iterrows():
+            bp = f"{int(r['incomplete_bp'])} bp" if pd.notna(r['incomplete_bp']) else "unknown bp"
+            print(f"  {r['locus']} {r['allele_position']} {r['allele']}: {bp}", file=sys.stderr)
 
     tsv_path = args.outdir / f"{args.sample}_annotated.tsv"
     df.to_csv(tsv_path, sep='\t', index=False)

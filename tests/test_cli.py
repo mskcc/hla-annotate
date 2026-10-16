@@ -78,3 +78,33 @@ def test_cli_skip_html(pgroup_file, tmp_path):
     assert result.returncode == 0, result.stderr
     assert (tmp_path / 'sample3_annotated.tsv').exists()
     assert not (tmp_path / 'sample3_report.html').exists()
+
+
+def test_cli_version():
+    from importlib.metadata import version
+    result = subprocess.run(['annotate_hlahd', '--version'], capture_output=True, text=True)
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.strip() == f"annotate_hlahd {version('hla-annotate')}"
+    assert version('hla-annotate') == '1.0.1'
+
+
+def test_cli_reports_incomplete_coverage(pgroup_file, tmp_path):
+    # sample5 A: allele1 incomp.7, allele2 incomp.4
+    result = subprocess.run(
+        ['annotate_hlahd', '--result_dir', str(FIXTURES), '--sample', 'sample5',
+         '--pgroup_file', str(pgroup_file), '--outdir', str(tmp_path), '--skip_html'],
+        capture_output=True, text=True,
+    )
+    assert result.returncode == 0, result.stderr
+    assert 'INCOMPLETE COVERAGE: 2 allele(s), 11 bp' in result.stderr
+    assert 'A allele1 HLA-A*11:01:01: 7 bp' in result.stderr
+
+
+def test_cli_no_incomplete_message_when_complete(pgroup_file, tmp_path):
+    result = subprocess.run(
+        ['annotate_hlahd', '--result_dir', str(FIXTURES), '--sample', 'sample3',
+         '--pgroup_file', str(pgroup_file), '--outdir', str(tmp_path), '--skip_html'],
+        capture_output=True, text=True,
+    )
+    assert result.returncode == 0, result.stderr
+    assert 'INCOMPLETE COVERAGE' not in result.stderr

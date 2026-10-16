@@ -12,8 +12,15 @@ def _make_row(
     multiple_best_pairs=False, has_ambiguous_pair=False, ambiguous_alleles=None,
     est_mismatch=False, est_mismatch_detail=None,
     exon2_depth=262.4, exon2_incomp=0, exon3_depth=303.0, exon3_incomp=0,
-    incomplete_coverage=False,
+    incomplete_coverage=False, exon2_incomplete=None, exon3_incomplete=None,
+    incomplete_bp=None,
 ):
+    if exon2_incomplete is None:
+        exon2_incomplete = bool(exon2_incomp)
+    if exon3_incomplete is None:
+        exon3_incomplete = bool(exon3_incomp)
+    if incomplete_bp is None:
+        incomplete_bp = exon2_incomp + exon3_incomp
     return {
         'sample': sample, 'locus': locus, 'allele': allele,
         'allele_position': allele_position, 'resolution': resolution,
@@ -25,6 +32,8 @@ def _make_row(
         'est_mismatch_detail': est_mismatch_detail,
         'exon2_depth': exon2_depth, 'exon2_incomp': exon2_incomp,
         'exon3_depth': exon3_depth, 'exon3_incomp': exon3_incomp,
+        'exon2_incomplete': exon2_incomplete, 'exon3_incomplete': exon3_incomplete,
+        'incomplete_bp': incomplete_bp,
         'incomplete_coverage': incomplete_coverage,
     }
 
@@ -217,3 +226,26 @@ def test_render_report_no_pileup_block_when_absent(tmp_path):
     out = render_report(df, 'S1', 'pgroup.txt', tmp_path, TEMPLATE_DIR)
     html = out.read_text()
     assert 'Read Evidence' not in html
+
+
+def test_render_report_shows_incomplete_bp(tmp_path):
+    rows = [
+        _make_row(allele_position='allele1', exon3_incomp=7, incomplete_coverage=True),
+        _make_row(allele='HLA-A*03:01:01', allele_position='allele2', p_group='A*03:01P',
+                  exon2_incomp=4, incomplete_coverage=True),
+    ]
+    html = render_report(pd.DataFrame(rows), 'S1', 'pgroup.txt', tmp_path, TEMPLATE_DIR).read_text()
+    assert '7 bp incomplete' in html
+    assert '4 bp incomplete' in html
+
+
+def test_render_report_flags_incomp_zero(tmp_path):
+    # incomp.0: flagged and marked even though no bp count is positive
+    rows = [
+        _make_row(allele_position='allele1', exon2_incomplete=True, incomplete_coverage=True),
+        _make_row(allele='HLA-A*03:01:01', allele_position='allele2', p_group='A*03:01P'),
+    ]
+    html = render_report(pd.DataFrame(rows), 'S1', 'pgroup.txt', tmp_path, TEMPLATE_DIR).read_text()
+    assert '<span class="badge badge-darkred">INCOMPLETE COVERAGE</span>' in html
+    assert '(!)' in html
+    assert '0 bp incomplete' in html

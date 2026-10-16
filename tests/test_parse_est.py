@@ -144,3 +144,71 @@ def test_best_pairs_representative_name_dash_is_none(sample4_est):
     bp = parse_est(sample4_est)['best_pairs'][0]
     assert bp['allele1'] == 'A*02:01:01:01'
     assert bp['allele2'] is None
+
+
+def test_no_candidate_token_is_treated_as_absent(tmp_path):
+    est = tmp_path / "sample_C_est.txt"
+    est.write_text(
+        "#Pair count\t1\n"
+        "#Best allele pair\t1\n"
+        "HLA-C*04:01:01,No candidate.\tNo candidate.\t"
+        "exon2:262.426:comp.0,exon3:303.069:comp.0\t\n"
+    )
+    result = parse_est(est)
+    assert result['best_pair_alleles'] == ['C*04:01:01']
+    assert result['best_pairs'][0]['allele1'] == 'C*04:01:01'
+    assert result['best_pairs'][0]['allele2'] is None
+
+
+def test_no_candidate_fixture(fixtures_dir):
+    result = parse_est(fixtures_dir / "homozyg_C.est.txt")
+    assert result['best_pair_alleles'] == ['C*07:02:01:01']
+    assert result['best_pairs'][0]['allele1'] == 'C*07:02:01:01'
+    assert result['best_pairs'][0]['allele2'] is None
+    assert result['best_pairs'][0]['allele1_coverage']['exon2_depth'] == 262.426
+
+
+# --- incomplete flag: any non-comp status ---
+
+def test_parse_coverage_complete_not_flagged():
+    cov = _parse_coverage('exon2:262.426:comp.0,exon3:303.069:comp')
+    assert cov['exon2_incomplete'] is False
+    assert cov['exon3_incomplete'] is False
+    assert cov['exon3_incomp'] == 0
+
+
+def test_parse_coverage_incomp_flagged_with_count():
+    cov = _parse_coverage('exon2:45.231:comp.0,exon3:51.002:incomp.62')
+    assert cov['exon3_incomplete'] is True
+    assert cov['exon3_incomp'] == 62
+    assert cov['exon2_incomplete'] is False
+
+
+def test_parse_coverage_incomp_zero_flagged():
+    cov = _parse_coverage('exon2:45.0:incomp.0,exon3:51.0:comp.0')
+    assert cov['exon2_incomplete'] is True
+    assert cov['exon2_incomp'] == 0
+
+
+def test_parse_coverage_incomp_without_count_flagged():
+    cov = _parse_coverage('exon2:45.0:incomp,exon3:51.0:incomp.abc')
+    assert cov['exon2_incomplete'] is True and cov['exon2_incomp'] is None
+    assert cov['exon3_incomplete'] is True and cov['exon3_incomp'] is None
+
+
+def test_parse_coverage_comp_with_nonzero_count_flagged():
+    cov = _parse_coverage('exon2:45.0:comp.5,exon3:51.0:comp.0')
+    assert cov['exon2_incomplete'] is True
+    assert cov['exon2_incomp'] == 5
+
+
+def test_parse_coverage_unknown_status_flagged():
+    cov = _parse_coverage('exon2:45.0:weird,exon3:51.0:comp.0')
+    assert cov['exon2_incomplete'] is True
+    assert cov['exon2_incomp'] is None
+
+
+def test_parse_coverage_null_field_not_flagged():
+    cov = _parse_coverage('-')
+    assert cov['exon2_incomplete'] is False
+    assert cov['exon3_incomplete'] is False

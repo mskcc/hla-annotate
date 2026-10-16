@@ -1,5 +1,7 @@
 from pathlib import Path
 
+from .parse_final import is_missing_allele, normalize_allele
+
 
 def load_pgroup_table(pgroup_file: Path) -> dict[str, str]:
     """
@@ -56,7 +58,8 @@ def lookup_pgroup(allele: str | None, lookup: dict[str, str]) -> tuple[str | Non
         (p_group, found): tuple of the P-group string and a bool indicating success.
         If not found, p_group is None and found is False.
     """
-    if not allele or allele in ('Not typed', '-'):
+    allele = normalize_allele(allele)
+    if is_missing_allele(allele):
         return None, False
 
     a = allele.removeprefix('HLA-')

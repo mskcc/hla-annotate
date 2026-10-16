@@ -1,6 +1,8 @@
 import pytest
 import pandas as pd
-from hlahd_annotate.parse_final import parse_final_result, CLASS_I_LOCI
+from hlahd_annotate.parse_final import (
+    parse_final_result, CLASS_I_LOCI, is_missing_allele, normalize_allele,
+)
 
 # sample3_final.result.txt:
 #   A  HLA-A*02:01:01  HLA-A*03:01:01          (3 cols, normal)
@@ -50,12 +52,12 @@ def test_parse_not_typed_is_null(tmp_path):
     assert df[(df['locus'] == 'A')]['allele'].isna().all()
 
 
-def test_parse_dash_allele2_is_null(tmp_path):
+def test_parse_dash_allele2_duplicates_homozygous_call(tmp_path):
     f = tmp_path / "s_final.result.txt"
     f.write_text("A\tHLA-A*02:01:01\t-\n")
     df = parse_final_result(f)
     a2 = df[(df['locus'] == 'A') & (df['allele_position'] == 'allele2')].iloc[0]
-    assert a2['allele'] is None or pd.isna(a2['allele'])
+    assert a2['allele'] == 'HLA-A*02:01:01'
 
 
 def test_parse_multiple_best_pairs_sample3(sample3_final):
@@ -116,3 +118,56 @@ def test_parse_null_allele_has_zero_resolution(tmp_path):
     df = parse_final_result(f)
     null_row = df[(df['locus'] == 'A') & (df['allele_position'] == 'allele2')].iloc[0]
     assert null_row['resolution'] == 0
+
+
+# --- homozygous calls / allele normalization (ported from hlaHD_workflow 1.0.1) ---
+
+def test_parse_homozygous_fixture(fixtures_dir):
+    df = parse_final_result(fixtures_dir / "homozyg_final.result.txt")
+    a = df[df['locus'] == 'A'].set_index('allele_position')
+    assert a.loc['allele1', 'allele'] == 'HLA-A*02:01:01'
+    assert a.loc['allele2', 'allele'] == 'HLA-A*02:01:01'
+    assert a.loc['allele2', 'resolution'] == 3
+    assert len(df) == 6
+
+
+def test_parse_dash_allele1_stays_no_call(tmp_path):
+    f = tmp_path / "s_final.result.txt"
+    f.write_text("A\t-\t-\n")
+    df = parse_final_result(f)
+    assert df['allele'].isna().all()
+
+
+def test_parse_malformed_allele_raises(tmp_path):
+    f = tmp_path / "s_final.result.txt"
+    f.write_text("A\tgarbage\tHLA-A*02:01\n")
+    with pytest.raises(ValueError, match="malformed HLA allele"):
+        parse_final_result(f)
+
+
+def test_parse_wrong_locus_allele_raises(tmp_path):
+    f = tmp_path / "s_final.result.txt"
+    f.write_text("A\tHLA-B*07:02\tHLA-A*02:01\n")
+    with pytest.raises(ValueError, match="for locus A"):
+        parse_final_result(f)
+
+
+@pytest.mark.parametrize("value", [None, pd.NA, float('nan'), '', '-', 'Not typed', '  -  '])
+def test_is_missing_allele_true(value):
+    assert is_missing_allele(value) is True
+
+
+@pytest.mark.parametrize("value", ['HLA-A*02:01', 'A*02:01:01:01', 0, 'No candidate.'])
+def test_is_missing_allele_false(value):
+    assert is_missing_allele(value) is False
+
+
+def test_normalize_allele_preserves_spelling():
+    assert normalize_allele(' HLA-A*02:01:01 ') == 'HLA-A*02:01:01'
+    assert normalize_allele('A*02:01:01:01', 'A') == 'A*02:01:01:01'
+    assert normalize_allele('-') is None
+
+
+def test_normalize_allele_rejects_placeholder():
+    with pytest.raises(ValueError):
+        normalize_allele('No candidate.')
