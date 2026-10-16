@@ -12,7 +12,7 @@ def _cov_cell(a1, a2, exon):
         if a is None or pd.isna(depth):
             parts.append('—')
             continue
-        mark = '(!)' if (a.get(f'{exon}_incomp') or 0) > 0 else ''
+        mark = '(!)' if a.get(f'{exon}_incomplete') else ''
         parts.append(f"{depth:.0f}x{mark}")
     return ' / '.join(parts)
 
@@ -27,7 +27,11 @@ def _cov_detail(label, a):
         if pd.isna(depth):
             return 'n/a'
         return f"{depth:.1f}x incomp.{int(incomp) if pd.notna(incomp) else '?'}"
-    return f"{label}: exon2 {fmt('exon2')} | exon3 {fmt('exon3')}"
+    line = f"{label}: exon2 {fmt('exon2')} | exon3 {fmt('exon3')}"
+    if a.get('incomplete_coverage'):
+        bp = a.get('incomplete_bp')
+        line += f" | {int(bp) if pd.notna(bp) else '?'} bp incomplete"
+    return line
 
 
 def render_report(

@@ -6,8 +6,9 @@ EXPECTED_COLUMNS = [
     'sample', 'locus', 'allele', 'allele_position', 'resolution',
     'p_group', 'p_group_found', 'multiple_best_pairs', 'has_ambiguous_pair',
     'ambiguous_alleles', 'est_mismatch', 'est_mismatch_detail',
-    'exon2_depth', 'exon2_incomp', 'exon3_depth', 'exon3_incomp',
-    'incomplete_coverage',
+    'exon2_depth', 'exon2_incomp', 'exon2_incomplete',
+    'exon3_depth', 'exon3_incomp', 'exon3_incomplete',
+    'incomplete_bp', 'incomplete_coverage',
 ]
 
 
@@ -72,8 +73,9 @@ def test_annotate_tsv_roundtrip(fixtures_dir, pgroup_file, tmp_path):
     assert len(df2) == len(df)
 
 
-COVERAGE_COLUMNS = ['exon2_depth', 'exon2_incomp', 'exon3_depth', 'exon3_incomp',
-                    'incomplete_coverage']
+COVERAGE_COLUMNS = ['exon2_depth', 'exon2_incomp', 'exon2_incomplete',
+                    'exon3_depth', 'exon3_incomp', 'exon3_incomplete',
+                    'incomplete_bp', 'incomplete_coverage']
 
 
 def test_annotate_has_coverage_columns(fixtures_dir, pgroup_file):
@@ -143,3 +145,61 @@ def test_annotate_no_candidate_est_does_not_fail_sample(fixtures_dir, pgroup_fil
     c1 = df[(df['locus'] == 'C') & (df['allele_position'] == 'allele1')].iloc[0]
     assert bool(c1['est_mismatch']) is False
     assert c1['exon2_depth'] == 262.426
+
+
+# --- incomplete coverage: flag any incompleteness, report incomplete bp ---
+
+def test_annotate_incomplete_bp_sums_exons(fixtures_dir, pgroup_file):
+    # sample5 A: allele1 exon3 incomp.7 (exon2 comp.0), allele2 exon2 incomp.4
+    df = annotate_sample(fixtures_dir, 'sample5', pgroup_file)
+    a = df[df['locus'] == 'A'].set_index('allele_position')
+    assert a.loc['allele1', 'incomplete_bp'] == 7
+    assert bool(a.loc['allele1', 'exon3_incomplete']) is True
+    assert bool(a.loc['allele1', 'exon2_incomplete']) is False
+    assert a.loc['allele2', 'incomplete_bp'] == 4
+    assert bool(a.loc['allele2', 'exon2_incomplete']) is True
+
+
+def test_annotate_complete_has_zero_incomplete_bp(fixtures_dir, pgroup_file):
+    df = annotate_sample(fixtures_dir, 'sample3', pgroup_file)
+    a1 = df[(df['locus'] == 'A') & (df['allele_position'] == 'allele1')].iloc[0]
+    assert a1['incomplete_bp'] == 0
+    assert bool(a1['incomplete_coverage']) is False
+
+
+def test_annotate_incomplete_bp_missing_when_est_missing(fixtures_dir, pgroup_file):
+    df = annotate_sample(fixtures_dir, 'sample3', pgroup_file)
+    b_rows = df[df['locus'] == 'B']
+    assert b_rows['incomplete_bp'].isna().all()
+
+
+def _write_sample(tmp_path, cov1, cov2):
+    (tmp_path / 'inc_final.result.txt').write_text(
+        "A\tHLA-A*02:01:01\tHLA-A*03:01:01\n")
+    (tmp_path / 'inc_A.est.txt').write_text(
+        "#Best allele pair\n"
+        f"HLA-A*02:01:01\tHLA-A*03:01:01\t{cov1}\t{cov2}\n")
+
+
+def test_annotate_flags_incomp_zero(pgroup_file, tmp_path):
+    # "anything at all": an incomp status is flagged even when its count is 0
+    _write_sample(tmp_path, 'exon2:200.0:incomp.0,exon3:210.0:comp.0',
+                  'exon2:200.0:comp.0,exon3:210.0:comp.0')
+    df = annotate_sample(tmp_path, 'inc', pgroup_file)
+    a = df[df['locus'] == 'A'].set_index('allele_position')
+    assert bool(a.loc['allele1', 'incomplete_coverage']) is True
+    assert a.loc['allele1', 'incomplete_bp'] == 0
+    assert bool(a.loc['allele2', 'incomplete_coverage']) is False
+
+
+def test_annotate_flags_incomp_without_count(pgroup_file, tmp_path):
+    # unparseable count: still flagged, bp unknown for that exon
+    _write_sample(tmp_path, 'exon2:200.0:incomp,exon3:210.0:incomp.x',
+                  'exon2:200.0:comp.0,exon3:210.0:incomp.3')
+    df = annotate_sample(tmp_path, 'inc', pgroup_file)
+    a = df[df['locus'] == 'A'].set_index('allele_position')
+    assert bool(a.loc['allele1', 'exon2_incomplete']) is True
+    assert bool(a.loc['allele1', 'exon3_incomplete']) is True
+    assert bool(a.loc['allele1', 'incomplete_coverage']) is True
+    assert pd.isna(a.loc['allele1', 'incomplete_bp'])
+    assert a.loc['allele2', 'incomplete_bp'] == 3

@@ -10,13 +10,19 @@ _EXONS = ('exon2', 'exon3')
 def _parse_coverage(field: str) -> dict:
     """
     Parse a coverage field like 'exon2:262.426:comp.0,exon3:303.069:incomp.7'
-    into {exon2_depth, exon2_incomp, exon3_depth, exon3_incomp}.
-    comp.N -> incomp 0; incomp.N -> incomp N. Missing/null -> None values.
+    into {exonN_depth, exonN_incomp, exonN_incomplete} for exon2 and exon3.
+
+    exonN_incomp is the count of incomplete bases (the N in comp.N/incomp.N),
+    or None if absent/unparseable. exonN_incomplete is True for anything other
+    than a clean 'comp'/'comp.0' status: incomp in any form (incomp.0, no
+    count, bad count), comp with a nonzero count, or an unknown status.
+    Missing/null field -> None values, not incomplete.
     """
     cov = {}
     for e in _EXONS:
         cov[f'{e}_depth'] = None
         cov[f'{e}_incomp'] = None
+        cov[f'{e}_incomplete'] = False
 
     if is_missing_allele(field) or (isinstance(field, str) and field.strip() in _NULL_ALLELE):
         return cov
@@ -34,13 +40,17 @@ def _parse_coverage(field: str) -> dict:
             cov[f'{exon}_depth'] = float(depth)
         except ValueError:
             cov[f'{exon}_depth'] = None
-        if status.startswith('incomp.'):
-            try:
-                cov[f'{exon}_incomp'] = int(status.split('.', 1)[1])
-            except ValueError:
-                cov[f'{exon}_incomp'] = None
-        elif status.startswith('comp'):
-            cov[f'{exon}_incomp'] = 0
+        name, _, count = status.partition('.')
+        try:
+            n = int(count) if count else None
+        except ValueError:
+            n = None
+        if name == 'comp':
+            cov[f'{exon}_incomp'] = 0 if n is None else n
+            cov[f'{exon}_incomplete'] = bool(n)
+        else:
+            cov[f'{exon}_incomp'] = n
+            cov[f'{exon}_incomplete'] = True
 
     return cov
 

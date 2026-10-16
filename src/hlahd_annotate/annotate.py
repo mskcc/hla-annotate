@@ -18,19 +18,29 @@ ANNOTATED_COLUMNS = [
     'sample', 'locus', 'allele', 'allele_position', 'resolution',
     'p_group', 'p_group_found', 'multiple_best_pairs', 'has_ambiguous_pair',
     'ambiguous_alleles', 'est_mismatch', 'est_mismatch_detail',
-    'exon2_depth', 'exon2_incomp', 'exon3_depth', 'exon3_incomp',
-    'incomplete_coverage',
+    'exon2_depth', 'exon2_incomp', 'exon2_incomplete',
+    'exon3_depth', 'exon3_incomp', 'exon3_incomplete',
+    'incomplete_bp', 'incomplete_coverage',
 ]
 
 
-def _positive(value) -> bool:
-    """Return whether a nullable coverage scalar is a positive number."""
-    if is_missing_allele(value):
-        return False
-    try:
-        return float(value) > 0
-    except (TypeError, ValueError):
-        return False
+def _incomplete_bp(coverage: dict) -> int | None:
+    """Total incomplete bases across exons 2 and 3.
+
+    None when there is no coverage, or when an exon is flagged incomplete
+    but its count is unknown (the total would understate it).
+    """
+    if coverage['exon2_depth'] is None and coverage['exon3_depth'] is None:
+        return None
+    total = 0
+    for exon in ('exon2', 'exon3'):
+        n = coverage[f'{exon}_incomp']
+        if n is None:
+            if coverage[f'{exon}_incomplete']:
+                return None
+            continue
+        total += n
+    return total
 
 
 def annotate_sample(
@@ -46,7 +56,9 @@ def annotate_sample(
         sample, locus, allele, allele_position, resolution,
         p_group, p_group_found, multiple_best_pairs, has_ambiguous_pair,
         ambiguous_alleles, est_mismatch, est_mismatch_detail,
-        exon2_depth, exon2_incomp, exon3_depth, exon3_incomp, incomplete_coverage
+        exon2_depth, exon2_incomp, exon2_incomplete,
+        exon3_depth, exon3_incomp, exon3_incomplete,
+        incomplete_bp, incomplete_coverage
     """
     result_dir = Path(result_dir)
     final_file = result_dir / f"{sample}_final.result.txt"
@@ -88,8 +100,8 @@ def annotate_sample(
         multiple_best_pairs = est.get('multiple_best_pairs', row['multiple_best_pairs'])
 
         # Per-allele exon coverage from est best_pairs
-        coverage = {'exon2_depth': None, 'exon2_incomp': None,
-                    'exon3_depth': None, 'exon3_incomp': None}
+        coverage = {'exon2_depth': None, 'exon2_incomp': None, 'exon2_incomplete': False,
+                    'exon3_depth': None, 'exon3_incomp': None, 'exon3_incomplete': False}
         best_pairs = est.get('best_pairs', [])
         # Unrecognized allele_position falls through to all-None coverage (intended silent-null)
         mapping = _POSITION_TO_COVERAGE.get(row['allele_position'])
@@ -97,10 +109,7 @@ def annotate_sample(
             idx, key = mapping
             if idx < len(best_pairs):
                 coverage = dict(best_pairs[idx][key])
-        incomplete_coverage = (
-            _positive(coverage['exon2_incomp'])
-            or _positive(coverage['exon3_incomp'])
-        )
+        incomplete_coverage = coverage['exon2_incomplete'] or coverage['exon3_incomplete']
 
         records.append({
             'sample': sample,
@@ -117,9 +126,15 @@ def annotate_sample(
             'est_mismatch_detail': est_mismatch_detail,
             'exon2_depth': coverage['exon2_depth'],
             'exon2_incomp': coverage['exon2_incomp'],
+            'exon2_incomplete': coverage['exon2_incomplete'],
             'exon3_depth': coverage['exon3_depth'],
             'exon3_incomp': coverage['exon3_incomp'],
+            'exon3_incomplete': coverage['exon3_incomplete'],
+            'incomplete_bp': _incomplete_bp(coverage),
             'incomplete_coverage': incomplete_coverage,
         })
 
-    return pd.DataFrame(records, columns=ANNOTATED_COLUMNS)
+    df = pd.DataFrame(records, columns=ANNOTATED_COLUMNS)
+    # nullable int so a missing est.txt doesn't turn bp counts into floats
+    df['incomplete_bp'] = df['incomplete_bp'].astype('Int64')
+    return df
