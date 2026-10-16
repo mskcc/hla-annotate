@@ -108,3 +108,38 @@ def test_annotate_coverage_none_when_est_missing(fixtures_dir, pgroup_file):
     b_rows = df[df['locus'] == 'B']
     assert b_rows['exon2_depth'].isna().all()
     assert not b_rows['incomplete_coverage'].any()
+
+
+# --- homozygous + "No candidate." (ported from hlaHD_workflow 1.0.1 / 1.0.2) ---
+
+def test_annotate_column_order_is_fixed(fixtures_dir, pgroup_file):
+    from hlahd_annotate.annotate import ANNOTATED_COLUMNS
+    assert ANNOTATED_COLUMNS == EXPECTED_COLUMNS
+    df = annotate_sample(fixtures_dir, 'homozyg', pgroup_file)
+    assert list(df.columns) == EXPECTED_COLUMNS
+
+
+def test_annotate_empty_result_keeps_columns(pgroup_file, tmp_path):
+    (tmp_path / 'empty_final.result.txt').write_text("DRB1\tHLA-DRB1*15:01:01\t-\n")
+    df = annotate_sample(tmp_path, 'empty', pgroup_file)
+    assert df.empty
+    assert list(df.columns) == EXPECTED_COLUMNS
+
+
+def test_annotate_homozygous_keeps_both_alleles(fixtures_dir, pgroup_file):
+    df = annotate_sample(fixtures_dir, 'homozyg', pgroup_file)
+    a = df[df['locus'] == 'A'].set_index('allele_position')
+    for pos in ('allele1', 'allele2'):
+        assert a.loc[pos, 'allele'] == 'HLA-A*02:01:01'
+        assert a.loc[pos, 'p_group'] == 'A*02:01P'
+        assert bool(a.loc[pos, 'p_group_found']) is True
+        assert bool(a.loc[pos, 'est_mismatch']) is False
+    assert a.loc['allele2', 'exon2_depth'] == 257.163
+
+
+def test_annotate_no_candidate_est_does_not_fail_sample(fixtures_dir, pgroup_file):
+    df = annotate_sample(fixtures_dir, 'homozyg', pgroup_file)
+    assert len(df) == 6
+    c1 = df[(df['locus'] == 'C') & (df['allele_position'] == 'allele1')].iloc[0]
+    assert bool(c1['est_mismatch']) is False
+    assert c1['exon2_depth'] == 262.426

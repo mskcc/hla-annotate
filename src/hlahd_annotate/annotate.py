@@ -3,7 +3,7 @@ from pathlib import Path
 import pandas as pd
 
 from .pgroup import load_pgroup_table, lookup_pgroup
-from .parse_final import parse_final_result, CLASS_I_LOCI
+from .parse_final import parse_final_result, CLASS_I_LOCI, is_missing_allele
 from .parse_est import parse_est, cross_check_allele
 
 # Map allele_position to (best_pairs index, coverage key within that pair)
@@ -13,6 +13,24 @@ _POSITION_TO_COVERAGE = {
     'allele1_pair2': (1, 'allele1_coverage'),
     'allele2_pair2': (1, 'allele2_coverage'),
 }
+
+ANNOTATED_COLUMNS = [
+    'sample', 'locus', 'allele', 'allele_position', 'resolution',
+    'p_group', 'p_group_found', 'multiple_best_pairs', 'has_ambiguous_pair',
+    'ambiguous_alleles', 'est_mismatch', 'est_mismatch_detail',
+    'exon2_depth', 'exon2_incomp', 'exon3_depth', 'exon3_incomp',
+    'incomplete_coverage',
+]
+
+
+def _positive(value) -> bool:
+    """Return whether a nullable coverage scalar is a positive number."""
+    if is_missing_allele(value):
+        return False
+    try:
+        return float(value) > 0
+    except (TypeError, ValueError):
+        return False
 
 
 def annotate_sample(
@@ -55,7 +73,7 @@ def annotate_sample(
         # Cross-check (primary pair alleles only; pair2 alleles not cross-checked)
         est_mismatch = False
         est_mismatch_detail = None
-        if allele and not is_pair2:
+        if not is_missing_allele(allele) and not is_pair2:
             match, detail = cross_check_allele(allele, est.get('best_pair_alleles', []))
             if not match:
                 est_mismatch = True
@@ -80,8 +98,8 @@ def annotate_sample(
             if idx < len(best_pairs):
                 coverage = dict(best_pairs[idx][key])
         incomplete_coverage = (
-            (coverage['exon2_incomp'] or 0) > 0
-            or (coverage['exon3_incomp'] or 0) > 0
+            _positive(coverage['exon2_incomp'])
+            or _positive(coverage['exon3_incomp'])
         )
 
         records.append({
@@ -104,4 +122,4 @@ def annotate_sample(
             'incomplete_coverage': incomplete_coverage,
         })
 
-    return pd.DataFrame(records)
+    return pd.DataFrame(records, columns=ANNOTATED_COLUMNS)

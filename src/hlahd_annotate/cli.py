@@ -12,6 +12,7 @@ Usage:
         --outdir output/
 """
 import argparse
+from importlib.metadata import version
 from pathlib import Path
 
 from hlahd_annotate.annotate import annotate_sample
@@ -24,6 +25,8 @@ def parse_args():
     p = argparse.ArgumentParser(
         description='Annotate HLA-HD class I output with P-groups and quality flags.'
     )
+    p.add_argument('--version', action='version',
+                   version=f"%(prog)s {version('hla-annotate')}")
     p.add_argument('--result_dir', required=True, type=Path,
                    help='Directory containing <sample>_final.result.txt and <sample>_{A,B,C}.est.txt')
     p.add_argument('--sample', required=True,

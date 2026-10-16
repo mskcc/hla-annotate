@@ -144,3 +144,25 @@ def test_best_pairs_representative_name_dash_is_none(sample4_est):
     bp = parse_est(sample4_est)['best_pairs'][0]
     assert bp['allele1'] == 'A*02:01:01:01'
     assert bp['allele2'] is None
+
+
+def test_no_candidate_token_is_treated_as_absent(tmp_path):
+    est = tmp_path / "sample_C_est.txt"
+    est.write_text(
+        "#Pair count\t1\n"
+        "#Best allele pair\t1\n"
+        "HLA-C*04:01:01,No candidate.\tNo candidate.\t"
+        "exon2:262.426:comp.0,exon3:303.069:comp.0\t\n"
+    )
+    result = parse_est(est)
+    assert result['best_pair_alleles'] == ['C*04:01:01']
+    assert result['best_pairs'][0]['allele1'] == 'C*04:01:01'
+    assert result['best_pairs'][0]['allele2'] is None
+
+
+def test_no_candidate_fixture(fixtures_dir):
+    result = parse_est(fixtures_dir / "homozyg_C.est.txt")
+    assert result['best_pair_alleles'] == ['C*07:02:01:01']
+    assert result['best_pairs'][0]['allele1'] == 'C*07:02:01:01'
+    assert result['best_pairs'][0]['allele2'] is None
+    assert result['best_pairs'][0]['allele1_coverage']['exon2_depth'] == 262.426

@@ -1,5 +1,7 @@
 from pathlib import Path
 
+from .parse_final import is_missing_allele, normalize_allele
+
 _NULL_ALLELE = {'-', ''}
 
 _EXONS = ('exon2', 'exon3')
@@ -16,8 +18,10 @@ def _parse_coverage(field: str) -> dict:
         cov[f'{e}_depth'] = None
         cov[f'{e}_incomp'] = None
 
-    if not field or field.strip() in _NULL_ALLELE:
+    if is_missing_allele(field) or (isinstance(field, str) and field.strip() in _NULL_ALLELE):
         return cov
+    if not isinstance(field, str):
+        raise ValueError(f"coverage field must be a string or missing scalar, got {type(field).__name__}")
 
     for part in field.split(','):
         bits = part.split(':')
@@ -41,13 +45,30 @@ def _parse_coverage(field: str) -> dict:
     return cov
 
 
+def _est_allele(token: str) -> str | None:
+    """Normalize one est.txt allele token, or None for non-allele text.
+
+    est.txt is advisory (flags and cross-check only), so HLA-HD placeholders
+    such as "No candidate." mean "no allele here" rather than failing the
+    whole sample.
+    """
+    try:
+        return normalize_allele(token)
+    except ValueError:
+        return None
+
+
 def _first_allele(field: str) -> str | None:
     """First allele in a comma-separated est column, HLA- stripped; None if null."""
+    if is_missing_allele(field):
+        return None
+    if not isinstance(field, str):
+        raise ValueError(f"allele field must be a string or missing scalar, got {type(field).__name__}")
     field = field.strip()
     if field in _NULL_ALLELE:
         return None
     first = field.split(',')[0].strip().removeprefix('HLA-')
-    return first or None
+    return _est_allele(first)
 
 
 def parse_est(est_file: Path) -> dict:
@@ -111,12 +132,13 @@ def parse_est(est_file: Path) -> dict:
                 # Best pair data lines: col0=allele1_comma_list, col1=allele2_comma_list
                 for col in cols[:2]:
                     col = col.strip()
-                    if col in _NULL_ALLELE:
+                    if is_missing_allele(col):
                         continue
                     for a in col.split(','):
                         a = a.strip().removeprefix('HLA-')
-                        if a:
-                            best_pair_alleles.append(a)
+                        allele = _est_allele(a) if a else None
+                        if allele:
+                            best_pair_alleles.append(allele)
                 allele1_cov = _parse_coverage(cols[2]) if len(cols) > 2 else _parse_coverage('')
                 allele2_cov = _parse_coverage(cols[3]) if len(cols) > 3 else _parse_coverage('')
                 best_pairs.append({
@@ -143,7 +165,8 @@ def cross_check_allele(
     If match_found is True, detail_string is None.
     Hard warning to stderr is the caller's responsibility.
     """
-    if not allele or not best_pair_alleles:
+    allele = normalize_allele(allele)
+    if is_missing_allele(allele) or not best_pair_alleles:
         return True, None
 
     a = allele.removeprefix('HLA-')
@@ -152,6 +175,9 @@ def cross_check_allele(
 
     truncated = set()
     for bp in best_pair_alleles:
+        bp = normalize_allele(bp)
+        if is_missing_allele(bp):
+            continue
         bp_fields = bp.split(':')
         truncated.add(':'.join(bp_fields[:n_fields]))
 

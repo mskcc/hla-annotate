@@ -78,3 +78,11 @@ def test_cli_skip_html(pgroup_file, tmp_path):
     assert result.returncode == 0, result.stderr
     assert (tmp_path / 'sample3_annotated.tsv').exists()
     assert not (tmp_path / 'sample3_report.html').exists()
+
+
+def test_cli_version():
+    from importlib.metadata import version
+    result = subprocess.run(['annotate_hlahd', '--version'], capture_output=True, text=True)
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.strip() == f"annotate_hlahd {version('hla-annotate')}"
+    assert version('hla-annotate') == '1.0.1'
