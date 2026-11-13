@@ -2,17 +2,16 @@ import sys
 from pathlib import Path
 import pandas as pd
 
+from .alignment import load_typed_exons
 from .pgroup import load_pgroup_table, lookup_pgroup
-from .parse_final import parse_final_result, CLASS_I_LOCI, is_missing_allele
+from .parse_final import parse_final_result, CLASS_I_LOCI, is_missing_allele, position_pair_index
 from .parse_est import parse_est, cross_check_allele
+from .reporting import classify, two_field
 
-# Map allele_position to (best_pairs index, coverage key within that pair)
-_POSITION_TO_COVERAGE = {
-    'allele1': (0, 'allele1_coverage'),
-    'allele2': (0, 'allele2_coverage'),
-    'allele1_pair2': (1, 'allele1_coverage'),
-    'allele2_pair2': (1, 'allele2_coverage'),
-}
+DEFAULT_MIN_EXON_DEPTH = 75.0
+
+_EMPTY_COVERAGE = {'exon2_depth': None, 'exon2_incomp': None, 'exon2_incomplete': False,
+                   'exon3_depth': None, 'exon3_incomp': None, 'exon3_incomplete': False}
 
 ANNOTATED_COLUMNS = [
     'sample', 'locus', 'allele', 'allele_position', 'resolution',
@@ -21,7 +20,12 @@ ANNOTATED_COLUMNS = [
     'exon2_depth', 'exon2_incomp', 'exon2_incomplete',
     'exon3_depth', 'exon3_incomp', 'exon3_incomplete',
     'incomplete_bp', 'incomplete_coverage',
+    # Reporting model (locus-level values, repeated on each allele row).
+    'two_field', 'two_field_genotype', 'call_status', 'flags',
+    'frequency_resolution_details', 'provenance', 'phase_check', 'qc_evaluable',
 ]
+# multiple_best_pairs / has_ambiguous_pair are raw est.txt indicators ('#Best allele
+# pair' > 1, '#Other ambiguous pair' present). Report call_status and flags instead.
 
 
 def _incomplete_bp(coverage: dict) -> int | None:
@@ -43,96 +47,94 @@ def _incomplete_bp(coverage: dict) -> int | None:
     return total
 
 
+def _coverage(est: dict, position: str) -> dict:
+    pair_idx, slot = position_pair_index(position)
+    best_pairs = est.get('best_pairs', [])
+    if pair_idx < len(best_pairs):
+        return dict(best_pairs[pair_idx][f'allele{slot + 1}_coverage'])
+    return dict(_EMPTY_COVERAGE)
+
+
+def _allele_record(sample, locus, row, est, pgroup_lookup) -> dict:
+    allele = row['allele']
+    p_group, p_group_found = lookup_pgroup(allele, pgroup_lookup)
+    est_mismatch, est_mismatch_detail = False, None
+    # Cross-check primary pair alleles only.
+    if not is_missing_allele(allele) and 'pair' not in row['allele_position']:
+        match, detail = cross_check_allele(allele, est.get('best_pair_alleles', []))
+        if not match:
+            est_mismatch, est_mismatch_detail = True, detail
+            print(f"WARNING: est_mismatch for sample={sample} locus={locus} "
+                  f"allele_position={row['allele_position']}: {detail}", file=sys.stderr)
+    coverage = _coverage(est, row['allele_position'])
+    return {
+        'sample': sample, 'locus': locus, 'allele': allele,
+        'allele_position': row['allele_position'], 'resolution': row['resolution'],
+        'p_group': p_group, 'p_group_found': p_group_found,
+        # prefer est.txt (more precise) over the final.result.txt column count
+        'multiple_best_pairs': est.get('multiple_best_pairs', row['multiple_best_pairs']),
+        'has_ambiguous_pair': est.get('has_ambiguous_pair', False),
+        'ambiguous_alleles': est.get('ambiguous_alleles'),
+        'est_mismatch': est_mismatch, 'est_mismatch_detail': est_mismatch_detail,
+        **coverage,
+        'incomplete_bp': _incomplete_bp(coverage),
+        'incomplete_coverage': coverage['exon2_incomplete'] or coverage['exon3_incomplete'],
+        'two_field': None if is_missing_allele(allele) else two_field(allele),
+    }
+
+
+def _locus_pairs(records: list[dict]) -> list[tuple]:
+    """Reported (a1, a2) pairs of one locus, HLA- stripped, None for no-calls."""
+    pairs: dict[int, list] = {}
+    for r in records:
+        idx, slot = position_pair_index(r['allele_position'])
+        a = None if is_missing_allele(r['allele']) else r['allele'].removeprefix('HLA-')
+        pairs.setdefault(idx, [None, None])[slot] = a
+    return [tuple(pairs[i]) for i in sorted(pairs)]
+
+
+def _typed_exons(alignment_dir, locus, est, pairs):
+    if alignment_dir is None:
+        return None
+    alleles = {a for p in pairs for a in p if a}
+    alleles |= set(est.get('best_pair_alleles', []))
+    alleles |= {a for p in est.get('other_pairs', []) for a in p}
+    return load_typed_exons(alignment_dir, locus, alleles)
+
+
 def annotate_sample(
     result_dir: Path,
     sample: str,
     pgroup_file: Path,
+    alignment_dir: Path | None = None,
+    min_exon_depth: float = DEFAULT_MIN_EXON_DEPTH,
 ) -> pd.DataFrame:
     """
-    Combine parse_final, parse_est, and P-group lookup into the annotated DataFrame.
-    Emits a WARNING to stderr for each allele that fails est cross-check.
-
-    Returns DataFrame with columns:
-        sample, locus, allele, allele_position, resolution,
-        p_group, p_group_found, multiple_best_pairs, has_ambiguous_pair,
-        ambiguous_alleles, est_mismatch, est_mismatch_detail,
-        exon2_depth, exon2_incomp, exon2_incomplete,
-        exon3_depth, exon3_incomp, exon3_incomplete,
-        incomplete_bp, incomplete_coverage
+    Combine parse_final, parse_est, P-group lookup and the reporting model into
+    one row per reported allele (ANNOTATED_COLUMNS). alignment_dir holds IMGT
+    alignments/<GENE>_nuc.txt for the phase test; without it phase_check is
+    'not_evaluated'. Emits a WARNING to stderr for each est cross-check failure.
     """
     result_dir = Path(result_dir)
-    final_file = result_dir / f"{sample}_final.result.txt"
-
-    df = parse_final_result(final_file)
+    df = parse_final_result(result_dir / f"{sample}_final.result.txt")
     pgroup_lookup = load_pgroup_table(pgroup_file)
 
-    # Load est data for each class I locus (returns empty-flag dict if file missing)
-    est_data: dict[str, dict] = {}
-    for locus in CLASS_I_LOCI:
-        est_file = result_dir / f"{sample}_{locus}.est.txt"
-        est_data[locus] = parse_est(est_file)
-
     records = []
-    for _, row in df.iterrows():
-        locus = row['locus']
-        allele = row['allele']
-        est = est_data.get(locus, {})
-        is_pair2 = 'pair2' in row['allele_position']
-
-        # P-group lookup
-        p_group, p_group_found = lookup_pgroup(allele, pgroup_lookup)
-
-        # Cross-check (primary pair alleles only; pair2 alleles not cross-checked)
-        est_mismatch = False
-        est_mismatch_detail = None
-        if not is_missing_allele(allele) and not is_pair2:
-            match, detail = cross_check_allele(allele, est.get('best_pair_alleles', []))
-            if not match:
-                est_mismatch = True
-                est_mismatch_detail = detail
-                print(
-                    f"WARNING: est_mismatch for sample={sample} locus={locus} "
-                    f"allele_position={row['allele_position']}: {detail}",
-                    file=sys.stderr,
-                )
-
-        # multiple_best_pairs: prefer est.txt (more precise) over final.result.txt count
-        multiple_best_pairs = est.get('multiple_best_pairs', row['multiple_best_pairs'])
-
-        # Per-allele exon coverage from est best_pairs
-        coverage = {'exon2_depth': None, 'exon2_incomp': None, 'exon2_incomplete': False,
-                    'exon3_depth': None, 'exon3_incomp': None, 'exon3_incomplete': False}
-        best_pairs = est.get('best_pairs', [])
-        # Unrecognized allele_position falls through to all-None coverage (intended silent-null)
-        mapping = _POSITION_TO_COVERAGE.get(row['allele_position'])
-        if mapping:
-            idx, key = mapping
-            if idx < len(best_pairs):
-                coverage = dict(best_pairs[idx][key])
-        incomplete_coverage = coverage['exon2_incomplete'] or coverage['exon3_incomplete']
-
-        records.append({
-            'sample': sample,
-            'locus': locus,
-            'allele': allele,
-            'allele_position': row['allele_position'],
-            'resolution': row['resolution'],
-            'p_group': p_group,
-            'p_group_found': p_group_found,
-            'multiple_best_pairs': multiple_best_pairs,
-            'has_ambiguous_pair': est.get('has_ambiguous_pair', False),
-            'ambiguous_alleles': est.get('ambiguous_alleles'),
-            'est_mismatch': est_mismatch,
-            'est_mismatch_detail': est_mismatch_detail,
-            'exon2_depth': coverage['exon2_depth'],
-            'exon2_incomp': coverage['exon2_incomp'],
-            'exon2_incomplete': coverage['exon2_incomplete'],
-            'exon3_depth': coverage['exon3_depth'],
-            'exon3_incomp': coverage['exon3_incomp'],
-            'exon3_incomplete': coverage['exon3_incomplete'],
-            'incomplete_bp': _incomplete_bp(coverage),
-            'incomplete_coverage': incomplete_coverage,
-        })
+    for locus in sorted(CLASS_I_LOCI):
+        locus_rows = df[df['locus'] == locus]
+        if locus_rows.empty:
+            continue
+        est = parse_est(result_dir / f"{sample}_{locus}.est.txt")
+        recs = [_allele_record(sample, locus, row, est, pgroup_lookup)
+                for _, row in locus_rows.iterrows()]
+        pairs = _locus_pairs(recs)
+        primary_cov = [r for r in recs if r['allele_position'] in ('allele1', 'allele2')
+                       and not is_missing_allele(r['allele'])]
+        model = classify(pairs, est, pgroup_lookup, _typed_exons(alignment_dir, locus, est, pairs),
+                         primary_cov, min_exon_depth)
+        model['call_status'] = ';'.join(model['call_status'])
+        model['flags'] = ';'.join(model['flags'])
+        records += [{**r, **model} for r in recs]
 
     df = pd.DataFrame(records, columns=ANNOTATED_COLUMNS)
     # nullable int so a missing est.txt doesn't turn bp counts into floats

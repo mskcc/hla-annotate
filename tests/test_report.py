@@ -4,6 +4,7 @@ from hlahd_annotate.annotate import annotate_sample
 from hlahd_annotate.report import render_report
 
 TEMPLATE_DIR = Path(__file__).parents[1] / "src" / "hlahd_annotate" / "templates"
+QC = dict(call_status='Unique;QC review', flags='Incomplete exon coverage')
 
 
 def _make_row(
@@ -14,6 +15,8 @@ def _make_row(
     exon2_depth=262.4, exon2_incomp=0, exon3_depth=303.0, exon3_incomp=0,
     incomplete_coverage=False, exon2_incomplete=None, exon3_incomplete=None,
     incomplete_bp=None,
+    call_status='Unique', flags='', two_field_genotype='A*02:01/A*03:01',
+    frequency_resolution_details=None, phase_check='no_competing',
 ):
     if exon2_incomplete is None:
         exon2_incomplete = bool(exon2_incomp)
@@ -35,6 +38,10 @@ def _make_row(
         'exon2_incomplete': exon2_incomplete, 'exon3_incomplete': exon3_incomplete,
         'incomplete_bp': incomplete_bp,
         'incomplete_coverage': incomplete_coverage,
+        'call_status': call_status, 'flags': flags,
+        'two_field_genotype': two_field_genotype,
+        'frequency_resolution_details': frequency_resolution_details,
+        'phase_check': phase_check,
     }
 
 
@@ -92,48 +99,66 @@ def test_render_report_no_flag_badges_for_clean_sample(tmp_path):
     assert '<span class="badge badge-red">' not in html
 
 
-def test_render_report_ambiguous_pair_badge(tmp_path):
-    rows = [
-        _make_row(allele_position='allele1', has_ambiguous_pair=True,
-                  ambiguous_alleles='A*68:01 / A*02:614'),
-        _make_row(allele='HLA-A*03:01:01', allele_position='allele2', p_group='A*03:01P',
-                  has_ambiguous_pair=True),
-    ]
-    df = pd.DataFrame(rows)
-    out = render_report(df, 'S1', 'pgroup.txt', tmp_path, TEMPLATE_DIR)
-    html = out.read_text()
-    assert '<span class="badge badge-yellow">AMBIGUOUS PAIR</span>' in html
-    assert 'A*68:01' in html  # ambiguous_alleles in flag detail
+def _pair(**model):
+    return [_make_row(allele_position='allele1', **model),
+            _make_row(allele='HLA-A*03:01:01', allele_position='allele2', p_group='A*03:01P', **model)]
 
+
+def _html(rows, tmp_path):
+    return render_report(pd.DataFrame(rows), 'S1', 'pgroup.txt', tmp_path, TEMPLATE_DIR).read_text()
+
+
+def test_render_report_unique_status_and_two_field(tmp_path):
+    html = _html(_pair(), tmp_path)
+    assert '<span class="badge badge-green">Unique</span>' in html
+    assert 'A*02:01/A*03:01' in html
+
+
+def test_render_report_shared_pgroup_shows_alternative_pair(tmp_path):
+    html = _html(_pair(flags='Shared P-group', has_ambiguous_pair=True,
+                       ambiguous_alleles='A*02:614:01 / A*68:164:02'), tmp_path)
+    assert '<span class="badge badge-grey">Shared P-group</span>' in html
+    assert 'A*02:614:01 / A*68:164:02' in html
+    assert 'AMBIGUOUS PAIR' not in html
+
+
+def test_render_report_phase_ambiguity_badge(tmp_path):
+    html = _html(_pair(flags='Phase ambiguity', phase_check='evaluated'), tmp_path)
+    assert '<span class="badge badge-darkred">Phase ambiguity</span>' in html
+
+
+def test_render_report_phase_not_evaluated_is_stated(tmp_path):
+    html = _html(_pair(phase_check='not_evaluated'), tmp_path)
+    assert 'Phase ambiguity check:</strong> not evaluated' in html
+
+
+def test_render_report_frequency_resolved_details(tmp_path):
+    html = _html(_pair(call_status='Frequency-resolved',
+                       frequency_resolution_details='A*02:01/A*03:01; A*02:02/A*03:02'), tmp_path)
+    assert '<span class="badge badge-yellow">Frequency-resolved</span>' in html
+    assert 'A*02:02/A*03:02' in html
 
 def test_render_report_multiple_best_pairs_badge(tmp_path):
-    rows = [
-        _make_row(allele_position='allele1', multiple_best_pairs=True),
-        _make_row(allele='HLA-A*03:01:01', allele_position='allele2', p_group='A*03:01P',
-                  multiple_best_pairs=True),
-        _make_row(allele='HLA-A*68:01:01', allele_position='allele1_pair2',
-                  p_group=None, p_group_found=False, multiple_best_pairs=True),
-        _make_row(allele='HLA-A*24:02:01', allele_position='allele2_pair2',
-                  p_group=None, p_group_found=False, multiple_best_pairs=True),
+    model = dict(call_status='Multiple best pairs', flags='Frequency tie',
+                 two_field_genotype='A*02:01/A*03:01; A*24:02/A*68:01')
+    rows = _pair(**model) + [
+        _make_row(allele='HLA-A*68:01:01', allele_position='allele1_pair2', **model),
+        _make_row(allele='HLA-A*24:02:01', allele_position='allele2_pair2', **model),
     ]
-    df = pd.DataFrame(rows)
-    out = render_report(df, 'S1', 'pgroup.txt', tmp_path, TEMPLATE_DIR)
-    html = out.read_text()
-    assert '<span class="badge badge-orange">MULTIPLE BEST PAIRS</span>' in html
+    html = _html(rows, tmp_path)
+    assert '<span class="badge badge-orange">Multiple best pairs</span>' in html
+    assert '<span class="badge badge-orange">Frequency tie</span>' in html
+    assert 'A*24:02/A*68:01' in html
 
-
-def test_render_report_est_mismatch_badge(tmp_path):
+def test_render_report_est_mismatch_is_internal_not_a_flag(tmp_path):
     rows = [
         _make_row(allele_position='allele1', est_mismatch=True,
                   est_mismatch_detail='final=HLA-A*02:01:01; est_best_alleles=A*03:01,A*24:02'),
         _make_row(allele='HLA-A*03:01:01', allele_position='allele2', p_group='A*03:01P'),
     ]
-    df = pd.DataFrame(rows)
-    out = render_report(df, 'S1', 'pgroup.txt', tmp_path, TEMPLATE_DIR)
-    html = out.read_text()
-    assert '<span class="badge badge-red">EST MISMATCH</span>' in html
-    assert 'final=HLA-A*02:01:01' in html  # detail in flag section
-
+    html = _html(rows, tmp_path)
+    assert 'EST MISMATCH</span>' not in html
+    assert 'Internal check' in html and 'final=HLA-A*02:01:01' in html
 
 def test_render_report_custom_hlahd_version(tmp_path):
     rows = [
@@ -161,14 +186,15 @@ def test_render_report_has_coverage_columns(tmp_path):
 
 def test_render_report_incomplete_coverage_badge(tmp_path):
     rows = [
-        _make_row(allele_position='allele1', exon3_incomp=7, incomplete_coverage=True),
+        _make_row(allele_position='allele1', exon3_incomp=7, incomplete_coverage=True, **QC),
         _make_row(allele='HLA-A*03:01:01', allele_position='allele2', p_group='A*03:01P',
-                  exon2_incomp=4, incomplete_coverage=True),
+                  exon2_incomp=4, incomplete_coverage=True, **QC),
     ]
     df = pd.DataFrame(rows)
     out = render_report(df, 'S1', 'pgroup.txt', tmp_path, TEMPLATE_DIR)
     html = out.read_text()
-    assert '<span class="badge badge-darkred">INCOMPLETE COVERAGE</span>' in html
+    assert '<span class="badge badge-red">Incomplete exon coverage</span>' in html
+    assert '<span class="badge badge-red">QC review</span>' in html
     assert '(!)' in html  # marker on the incomplete allele's cell
 
 
@@ -180,7 +206,7 @@ def test_render_report_no_incomplete_badge_when_complete(tmp_path):
     df = pd.DataFrame(rows)
     out = render_report(df, 'S1', 'pgroup.txt', tmp_path, TEMPLATE_DIR)
     html = out.read_text()
-    assert '<span class="badge badge-darkred">INCOMPLETE COVERAGE</span>' not in html
+    assert 'Incomplete exon coverage</span>' not in html
 
 
 def test_render_report_missing_pgroup_renders_dash_not_nan(tmp_path):
@@ -230,9 +256,9 @@ def test_render_report_no_pileup_block_when_absent(tmp_path):
 
 def test_render_report_shows_incomplete_bp(tmp_path):
     rows = [
-        _make_row(allele_position='allele1', exon3_incomp=7, incomplete_coverage=True),
+        _make_row(allele_position='allele1', exon3_incomp=7, incomplete_coverage=True, **QC),
         _make_row(allele='HLA-A*03:01:01', allele_position='allele2', p_group='A*03:01P',
-                  exon2_incomp=4, incomplete_coverage=True),
+                  exon2_incomp=4, incomplete_coverage=True, **QC),
     ]
     html = render_report(pd.DataFrame(rows), 'S1', 'pgroup.txt', tmp_path, TEMPLATE_DIR).read_text()
     assert '7 bp incomplete' in html
@@ -242,10 +268,10 @@ def test_render_report_shows_incomplete_bp(tmp_path):
 def test_render_report_flags_incomp_zero(tmp_path):
     # incomp.0: flagged and marked even though no bp count is positive
     rows = [
-        _make_row(allele_position='allele1', exon2_incomplete=True, incomplete_coverage=True),
+        _make_row(allele_position='allele1', exon2_incomplete=True, incomplete_coverage=True, **QC),
         _make_row(allele='HLA-A*03:01:01', allele_position='allele2', p_group='A*03:01P'),
     ]
     html = render_report(pd.DataFrame(rows), 'S1', 'pgroup.txt', tmp_path, TEMPLATE_DIR).read_text()
-    assert '<span class="badge badge-darkred">INCOMPLETE COVERAGE</span>' in html
+    assert '<span class="badge badge-red">Incomplete exon coverage</span>' in html
     assert '(!)' in html
     assert '0 bp incomplete' in html

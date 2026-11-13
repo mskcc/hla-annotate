@@ -9,6 +9,8 @@ EXPECTED_COLUMNS = [
     'exon2_depth', 'exon2_incomp', 'exon2_incomplete',
     'exon3_depth', 'exon3_incomp', 'exon3_incomplete',
     'incomplete_bp', 'incomplete_coverage',
+    'two_field', 'two_field_genotype', 'call_status', 'flags',
+    'frequency_resolution_details', 'provenance', 'phase_check', 'qc_evaluable',
 ]
 
 
