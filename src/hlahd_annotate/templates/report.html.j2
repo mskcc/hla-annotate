@@ -80,7 +80,8 @@
 
 {% set detailed = [] %}
 {% for locus in loci if locus.flags or locus.frequency_resolution_details or locus.est_mismatch
-   or locus.ambiguous_alleles or locus.phase_check in ['not_evaluated', 'incomplete'] %}{% set _ = detailed.append(locus) %}{% endfor %}
+   or locus.ambiguous_alleles or locus.phase_check in ['not_evaluated', 'incomplete']
+   or 'Incomplete Allele' in locus.flags %}{% set _ = detailed.append(locus) %}{% endfor %}
 {% if detailed %}
 <h2>Details</h2>
 {% for locus in detailed %}
@@ -94,6 +95,9 @@
       <p><strong>HLA-HD ambiguous pair (phase alternative, '#Other ambiguous pair'):</strong>
          {{ locus.ambiguous_alleles }}
          {% if 'Phase ambiguity' not in locus.flags %}&#8212; identical to the reported pair over exons 2&#8211;3, so not a phase difference.{% endif %}</p>
+    {% endif %}
+    {% if 'Incomplete Allele' in locus.flags %}
+      <p><strong>Incomplete allele in the HLA-HD dictionary:</strong> {{ locus.incomplete_allele_detail }}</p>
     {% endif %}
     {% if locus.phase_check in ['not_evaluated', 'incomplete'] %}
       <p><strong>Phase ambiguity check:</strong> {{ locus.phase_check | replace('_', ' ') }}
@@ -128,6 +132,7 @@
   <strong>Shared P-group:</strong> Competing two-field genotype assignments map to the same P-group and therefore encode identical peptide-binding domain amino acid sequences.<br>
   <strong>Frequency tie:</strong> Population-frequency ranking did not distinguish between the remaining read-supported genotype assignments; all remaining best-pair assignments are reported.<br>
   <strong>Low exon depth:</strong> HLA-HD mean coverage for exon 2 or exon 3 is below {{ min_exon_depth | int }}&times; for either allele.<br>
+  <strong>Incomplete Allele:</strong> A reported allele is missing one or more exons in the official HLA-HD dictionary (for example, only exons 2&#8211;4 are known), so its sequence outside those exons is not established.<br>
   <strong>All loci homozygous:</strong> HLA-A, -B and -C are all homozygous at two-field resolution; reviewed because this is uncommon and can indicate allele dropout or loss of heterozygosity.<br>
   <strong>Incomplete exon coverage:</strong> HLA-HD identifies one or more positions without coverage in exon 2 or exon 3 for either allele. A "(!)" marks the affected allele.
 </div>

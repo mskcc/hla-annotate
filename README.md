@@ -26,6 +26,7 @@ annotate_hlahd \
     --pgroup_file /path/to/hla_nom_p.txt \
     --outdir output/ \
     [--imgt_alignment_dir /path/to/IMGTHLA/alignments/] \
+    [--hlahd_dictionary_dir /path/to/hlahd/dictionary/] \
     [--min_exon_depth 75] \
     [--hlahd_version v1.7.1] \
     [--skip_html]
@@ -35,6 +36,8 @@ annotate_hlahd \
 - `--imgt_alignment_dir` holds IPD-IMGT/HLA `alignments/{A,B,C}_nuc.txt` from the same
   release as `--pgroup_file`. It is needed for the Phase ambiguity test; without it,
   `phase_check` is `not_evaluated` and a warning is printed.
+- `--hlahd_dictionary_dir` is HLA-HD's `dictionary/` directory, the one the run used; needed for
+  the Incomplete Allele flag.
 - `--min_exon_depth` is the Low exon depth threshold (HLA-HD mean depth, exon 2 or 3).
 
 ## Reporting model
@@ -58,6 +61,7 @@ These locus-level columns repeat on each allele row of the TSV.
 | Frequency tie | The frequency tiebreak left several genotypes |
 | Low exon depth | Exon 2 or 3 mean depth below `--min_exon_depth` for either allele |
 | Incomplete exon coverage | HLA-HD reports positions without coverage in exon 2 or 3 for either allele |
+| Incomplete Allele | A reported allele lacks one or more exons in HLA-HD's dictionary (`<GENE>/<GENE>.list`, passed with `--hlahd_dictionary_dir`); `incomplete_allele_detail` lists them. Without the dictionary: `not evaluated` |
 | All loci homozygous | A, B and C are all homozygous at two fields (one homozygous locus is normal and is not flagged) |
 
 Shared P-group compares HLA-HD's read-tied best pairs (`#Best allele pair`); Phase

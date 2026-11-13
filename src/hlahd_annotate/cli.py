@@ -45,6 +45,9 @@ def parse_args():
     p.add_argument('--imgt_alignment_dir', type=Path, default=None,
                    help='Directory with IPD-IMGT/HLA alignments/{A,B,C}_nuc.txt (same release as '
                         '--pgroup_file); enables the Phase ambiguity test')
+    p.add_argument('--hlahd_dictionary_dir', type=Path, default=None,
+                   help="HLA-HD's dictionary/ directory (holds <GENE>/<GENE>.list), the one the run "
+                        "used; enables the Incomplete Allele flag")
     p.add_argument('--min_exon_depth', type=float, default=DEFAULT_MIN_EXON_DEPTH,
                    help=f'Low exon depth threshold: exon 2/3 mean depth (default: {DEFAULT_MIN_EXON_DEPTH:g})')
     return p.parse_args()
@@ -67,7 +70,11 @@ def main():
 
     df = annotate_sample(args.result_dir, args.sample, args.pgroup_file,
                          alignment_dir=args.imgt_alignment_dir,
-                         min_exon_depth=args.min_exon_depth)
+                         min_exon_depth=args.min_exon_depth,
+                         dictionary_dir=args.hlahd_dictionary_dir)
+    if args.hlahd_dictionary_dir is None:
+        print("WARNING: --hlahd_dictionary_dir not given; Incomplete Allele not evaluated",
+              file=sys.stderr)
     if not df.empty:
         _summarize(df)
 

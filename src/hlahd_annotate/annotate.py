@@ -3,6 +3,7 @@ from pathlib import Path
 import pandas as pd
 
 from .alignment import load_typed_exons
+from .dictionary import fmt_exons, load_exon_presence, missing_exons
 from .pgroup import load_pgroup_table, lookup_pgroup
 from .parse_final import parse_final_result, CLASS_I_LOCI, is_missing_allele, position_pair_index
 from .parse_est import parse_est, cross_check_allele
@@ -10,6 +11,7 @@ from .reporting import classify, two_field
 
 DEFAULT_MIN_EXON_DEPTH = 75.0
 ALL_HOMOZYGOUS_FLAG = 'All loci homozygous'
+INCOMPLETE_ALLELE_FLAG = 'Incomplete Allele'
 
 _EMPTY_COVERAGE = {'exon2_depth': None, 'exon2_incomp': None, 'exon2_incomplete': False,
                    'exon3_depth': None, 'exon3_incomp': None, 'exon3_incomplete': False}
@@ -24,6 +26,7 @@ ANNOTATED_COLUMNS = [
     # Reporting model (locus-level values, repeated on each allele row).
     'two_field', 'two_field_genotype', 'call_status', 'flags',
     'frequency_resolution_details', 'provenance', 'phase_check', 'qc_evaluable',
+    'incomplete_allele_detail',
 ]
 # multiple_best_pairs / has_ambiguous_pair are raw est.txt indicators ('#Best allele
 # pair' > 1, '#Other ambiguous pair' present). Report call_status and flags instead.
@@ -117,6 +120,7 @@ def _typed_exons(alignment_dir, locus, est, pairs):
         return None
     alleles = {a for p in pairs for a in p if a}
     alleles |= set(est.get('best_pair_alleles', []))
+    alleles |= {a for p in est.get('other_pairs', []) for a in p}  # phase test needs these
     try:
         return load_typed_exons(alignment_dir, locus, alleles)
     except FileNotFoundError:
@@ -125,11 +129,42 @@ def _typed_exons(alignment_dir, locus, est, pairs):
         return None
 
 
+def _exon_table(dictionary_dir, locus):
+    if dictionary_dir is None:
+        return None
+    try:
+        return load_exon_presence(dictionary_dir, locus)
+    except FileNotFoundError:
+        print(f"WARNING: no HLA-HD dictionary list {locus}/{locus}.list in {dictionary_dir}; "
+              f"Incomplete Allele not evaluated for locus {locus}", file=sys.stderr)
+        return None
+
+
+def _incomplete_allele(pairs, table) -> tuple[bool, str]:
+    """(flag, detail) for the reported alleles: an allele lacking exons in the
+    HLA-HD dictionary is flagged; one absent from it is named, never passed."""
+    alleles = sorted({a for p in pairs for a in p if a})
+    if not alleles:
+        return False, ''
+    if table is None:
+        return False, 'not evaluated'
+    notes, flag = [], False
+    for a in alleles:
+        missing = missing_exons(a, table)
+        if missing is None:
+            notes.append(f"{a} not in HLA-HD dictionary")
+        elif missing:
+            flag = True
+            notes.append(f"{a} missing exon{'s' if len(missing) > 1 else ''} {fmt_exons(missing)}")
+    return flag, '; '.join(notes)
+
+
 _FAILED_ROWS = [{'allele': None, 'allele_position': p, 'resolution': 0,
                  'multiple_best_pairs': False} for p in ('allele1', 'allele2')]
 
 
-def _annotate_locus(sample, locus, rows, result_dir, pgroup_lookup, alignment_dir, min_depth):
+def _annotate_locus(sample, locus, rows, result_dir, pgroup_lookup, alignment_dir, min_depth,
+                    exon_table=None):
     """(allele records, reporting model dict) for one locus."""
     est = parse_est(result_dir / f"{sample}_{locus}.est.txt")
     pairs = _locus_pairs(rows)
@@ -142,6 +177,9 @@ def _annotate_locus(sample, locus, rows, result_dir, pgroup_lookup, alignment_di
     reported_cov = [r for r in recs if not is_missing_allele(r['allele'])]
     model = classify(pairs, est, pgroup_lookup, _typed_exons(alignment_dir, locus, est, pairs),
                      reported_cov, min_depth)
+    flag, model['incomplete_allele_detail'] = _incomplete_allele(pairs, exon_table)
+    if flag:
+        model['flags'].append(INCOMPLETE_ALLELE_FLAG)
     return recs, model
 
 
@@ -165,12 +203,15 @@ def annotate_sample(
     pgroup_file: Path,
     alignment_dir: Path | None = None,
     min_exon_depth: float = DEFAULT_MIN_EXON_DEPTH,
+    dictionary_dir: Path | None = None,
 ) -> pd.DataFrame:
     """
     Combine parse_final, parse_est, P-group lookup and the reporting model into
     one row per reported allele (ANNOTATED_COLUMNS). alignment_dir holds IMGT
     alignments/<GENE>_nuc.txt for the phase test; without it phase_check is
-    'not_evaluated'. A class I locus missing from final.result.txt is reported
+    'not_evaluated'. dictionary_dir is HLA-HD's dictionary/ (holds <GENE>/<GENE>.list)
+    for the Incomplete Allele flag; without it incomplete_allele_detail is
+    'not evaluated'. A class I locus missing from final.result.txt is reported
     as Failed (with a warning), never dropped.
     """
     result_dir = Path(result_dir)
@@ -185,7 +226,8 @@ def annotate_sample(
                   f"reported as Failed", file=sys.stderr)
             rows = [dict(r) for r in _FAILED_ROWS]
         per_locus[locus] = _annotate_locus(sample, locus, rows, result_dir, pgroup_lookup,
-                                           alignment_dir, min_exon_depth)
+                                           alignment_dir, min_exon_depth,
+                                           _exon_table(dictionary_dir, locus))
 
     _flag_all_homozygous({locus: model for locus, (_, model) in per_locus.items()})
     records = []

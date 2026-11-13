@@ -11,6 +11,7 @@ EXPECTED_COLUMNS = [
     'incomplete_bp', 'incomplete_coverage',
     'two_field', 'two_field_genotype', 'call_status', 'flags',
     'frequency_resolution_details', 'provenance', 'phase_check', 'qc_evaluable',
+    'incomplete_allele_detail',
 ]
 
 
@@ -286,3 +287,17 @@ def test_missing_alignment_file_degrades_locus_not_sample(pgroup_file, tmp_path,
     df = annotate_sample(tmp_path, 'S', pgroup_file, alignment_dir=empty_align)
     assert df[df['locus'] == 'A']['phase_check'].iloc[0] == 'not_evaluated'
     assert 'no IMGT alignment A_nuc.txt' in capsys.readouterr().err
+
+
+def test_phase_from_other_pair_is_evaluated_end_to_end(pgroup_file, tmp_path):
+    # Regression: the '#Other' alleles must be loaded from the alignment, or the
+    # phase test silently degrades to 'incomplete'.
+    from pathlib import Path
+    align = Path(__file__).parent / 'fixtures' / 'align'
+    rows = [f"HLA-A*02:01:01:01\tHLA-A*03:01:01:01\t{COV_GOOD}\t{COV_GOOD}"]
+    _write(tmp_path, 'S', "A\tHLA-A*02:01:01\tHLA-A*03:01:01\n" + HET_FINAL_BC,
+           {'A': _est(rows, other=["HLA-A*02:02:01\tHLA-A*03:02:01"]), 'B': HET_B, 'C': HET_C})
+    a = annotate_sample(tmp_path, 'S', pgroup_file, alignment_dir=align)
+    a = a[a['locus'] == 'A'].iloc[0]
+    assert a['phase_check'] == 'evaluated'
+    assert 'Phase ambiguity' in a['flags'].split(';')
