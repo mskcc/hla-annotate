@@ -14,8 +14,9 @@ Flags:
                        pair over exons 2+3. Not testable (no alignment, allele
                        missing) -> still flagged, trusting HLA-HD; phase_check says so.
                        Identical over exons 2+3 -> no flag (information only).
-  Shared P-group       another read-tied best-pair genotype ('#Best allele pair')
-                       has the same P-groups as the reported one
+  Shared P-group       the two reported alleles at this locus are different
+                       two-field alleles in the same P-group (identical
+                       peptide-binding domain on both chromosomes)
   Frequency tie        the frequency tiebreak left several genotypes
   Low exon depth       exon 2 or 3 mean depth below threshold, either allele
   Incomplete exon coverage
@@ -77,8 +78,7 @@ def classify(final_pairs, est, pgroups, typed_exons, coverage, min_depth):
 
     status, flags, details = _resolution(reported, cands)
     primary = next(iter(reported))
-    competing = {g: r for g, r in cands.items() if g != primary}
-    if _shares_pgroup(primary, competing, pgroups):
+    if any(_alleles_share_pgroup(g, pgroups) for g in reported):
         flags.append('Shared P-group')
     phase_check, phased = _phase(reported[primary], est.get('other_pairs', []), typed_exons)
     if phased:
@@ -116,16 +116,13 @@ def _resolution(reported: dict, cands: dict):
     return ['Unique'], [], None
 
 
-def _pgroup_pair(g, pgroups):
-    found = [lookup_pgroup(a, pgroups) for a in g]
-    if not all(ok for _, ok in found):
-        return None
-    return tuple(sorted(p for p, _ in found))
-
-
-def _shares_pgroup(primary, competing: dict, pgroups) -> bool:
-    mine = _pgroup_pair(primary, pgroups)
-    return mine is not None and any(_pgroup_pair(g, pgroups) == mine for g in competing)
+def _alleles_share_pgroup(g: tuple[str, str], pgroups) -> bool:
+    """Allele 1 and allele 2 differ at two fields but map to the same P-group.
+    A homozygous genotype is not flagged; an allele without a P-group never matches."""
+    if g[0] == g[1]:
+        return False
+    (p1, ok1), (p2, ok2) = (lookup_pgroup(a, pgroups) for a in g)
+    return ok1 and ok2 and p1 == p2
 
 
 def _phase(primary_rep, other_pairs: list, typed_exons):

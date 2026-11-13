@@ -119,9 +119,30 @@ def test_other_pair_never_sets_shared_pgroup(typed):
     assert 'Shared P-group' not in r['flags']
 
 
-def test_shared_pgroup_between_read_tied_best_pairs(typed):
-    r = run([P1], est([P1, ('A*02:99:01', 'A*03:01:01:01')]), typed=typed)
-    assert r['call_status'] == ['Frequency-resolved'] and r['flags'] == ['Shared P-group']
+def test_shared_pgroup_between_the_two_alleles_of_the_locus():
+    # A*02:01 and A*02:99 are different alleles in the same P-group (A*02:01P).
+    r = run([('A*02:01:01:01', 'A*02:99:01')], est([('A*02:01:01:01', 'A*02:99:01')]))
+    assert r['call_status'] == ['Unique'] and r['flags'] == ['Shared P-group']
+
+
+def test_alleles_in_different_pgroups_are_not_shared():
+    assert 'Shared P-group' not in run([P1], est([P1]))['flags']
+
+
+def test_homozygous_locus_is_not_shared_pgroup():
+    r = run([('A*02:01:01:01', 'A*02:01:01:01')], est([('A*02:01:01:01', '-')]))
+    assert 'Shared P-group' not in r['flags']
+
+
+def test_competing_best_pairs_with_same_pgroups_do_not_set_shared_pgroup():
+    # Old definition (competing genotype shares P-groups) must no longer fire.
+    r = run([P1], est([P1, ('A*02:99:01', 'A*03:01:01:01')]))
+    assert r['call_status'] == ['Frequency-resolved'] and 'Shared P-group' not in r['flags']
+
+
+def test_allele_without_pgroup_never_matches():
+    r = run([('A*02:01:01:01', 'A*02:77:01')], est([('A*02:01:01:01', 'A*02:77:01')]))
+    assert 'Shared P-group' not in r['flags']
 
 
 def test_read_tied_best_pairs_never_set_phase_ambiguity(typed):
