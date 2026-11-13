@@ -34,11 +34,22 @@ def _read_rows(path: Path) -> dict[str, str]:
 
 
 def _resolve(row: str, ref: str) -> str:
-    """Expand '-' to the reference base and '*' to '?'; keep '.' and '|'."""
-    if len(row) != len(ref):
-        raise ValueError("alignment row length differs from reference row")
+    """Expand '-' to the reference base and '*' to '?'; keep '.' and '|'.
+
+    A few expression variants (e.g. A*03:437Q, C*04:09L in IMGT 3.65.0) read
+    past the reference stop codon, so their rows run longer than the reference
+    row: the extra 3' columns have no reference base and are kept as written.
+    A row shorter than the reference ends in unknown ('?') columns.
+    """
+    ref = ref.ljust(len(row), '.')
+    row = row.ljust(len(ref), '*')
     out = []
     for c, r in zip(row, ref):
+        if r == '|':  # exon boundaries always come from the reference row
+            out.append('|')
+            continue
+        if c == '-' and r == '.':
+            raise ValueError("alignment row has '-' where the reference has no base")
         out.append(r if c == '-' else '?' if c == '*' else c.upper())
     return ''.join(out)
 

@@ -64,3 +64,19 @@ def test_unknown_columns_are_counted(ex):
     x = (ex['A*02:01:01:01'], ex['A*03:01:01:01'])
     y = (ex['A*02:50'], ex['A*03:01:01:01'])
     assert phase_relation(x, y) == ('identical', 3)
+
+
+def test_row_longer_than_reference_is_kept_not_an_error(tmp_path):
+    # IMGT expression variants (e.g. C*04:09L) read past the reference stop codon.
+    (tmp_path / 'A_nuc.txt').write_text(
+        " A*01:01:01:01     ATG|ACG TAC|GGC C|TGA\n"
+        " A*03:437Q         ---|--- ---|--- -|--C AAT\n")
+    ex = load_typed_exons(tmp_path, 'A', {'A*03:437Q'})
+    assert ex['A*03:437Q'] == 'ACGTACGGCC'
+
+
+def test_row_shorter_than_reference_ends_unknown(tmp_path):
+    (tmp_path / 'A_nuc.txt').write_text(
+        " A*01:01:01:01     ATG|ACG TAC|GGC C|TT\n"
+        " A*02:99           ---|--- ---|--\n")
+    assert load_typed_exons(tmp_path, 'A', {'A*02:99'})['A*02:99'] == 'ACGTACGG??'
