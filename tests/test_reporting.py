@@ -97,11 +97,26 @@ def test_homozygous_slot_never_invents_heterozygous_candidates():
     assert r['frequency_resolution_details'] == 'A*02:01/A*02:01; A*02:99/A*02:99'
 
 
-def test_phase_ambiguity_between_read_tied_best_pairs(typed):
-    # Two read-tied best pairs that are phase conjugates; frequency kept P1.
-    r = run([P1], est([P1, P2]), typed=typed)
-    assert r['call_status'] == ['Frequency-resolved']
+def test_phase_ambiguity_from_other_pair(typed):
+    # HLA-HD's '#Other ambiguous pair' is the phase alternative; sequence test confirms.
+    r = run([P1], est([P1], other=[P2]), typed=typed)
+    assert r['call_status'] == ['Unique']
     assert r['flags'] == ['Phase ambiguity'] and r['phase_check'] == 'evaluated'
+
+
+def test_other_pair_identical_over_typed_exons_is_not_flagged(typed):
+    r = run([P1], est([P1], other=[('A*02:99:01', 'A*03:01:01:01')]), typed=typed)
+    assert r['flags'] == [] and r['phase_check'] == 'evaluated'
+
+
+def test_other_pair_with_real_base_differences_is_not_phase(typed):
+    r = run([P1], est([P1], other=[('A*02:02:01', 'A*03:01:01:01')]), typed=typed)
+    assert 'Phase ambiguity' not in r['flags']
+
+
+def test_other_pair_never_sets_shared_pgroup(typed):
+    r = run([P1], est([P1], other=[('A*02:99:01', 'A*03:01:01:01')]), typed=typed)
+    assert 'Shared P-group' not in r['flags']
 
 
 def test_shared_pgroup_between_read_tied_best_pairs(typed):
@@ -109,31 +124,30 @@ def test_shared_pgroup_between_read_tied_best_pairs(typed):
     assert r['call_status'] == ['Frequency-resolved'] and r['flags'] == ['Shared P-group']
 
 
-def test_other_ambiguous_pair_never_drives_flags(typed):
-    # HLA-HD ranks '#Other ambiguous pair' below the best pair: trust the best call.
-    r = run([P1], est([P1], other=[P2, ('A*02:99:01', 'A*03:01:01:01')]), typed=typed)
-    assert r['call_status'] == ['Unique'] and r['flags'] == []
-    assert r['phase_check'] == 'no_competing'
+def test_read_tied_best_pairs_never_set_phase_ambiguity(typed):
+    r = run([P1], est([P1, P2]), typed=typed)
+    assert r['call_status'] == ['Frequency-resolved'] and 'Phase ambiguity' not in r['flags']
+    assert r['phase_check'] == 'no_other_pair'
 
 
-def test_phase_not_evaluated_without_alignment():
-    r = run([P1], est([P1, P2]))
-    assert r['phase_check'] == 'not_evaluated' and 'Phase ambiguity' not in r['flags']
+def test_other_pair_without_alignment_is_flagged_unverified():
+    r = run([P1], est([P1], other=[P2]))
+    assert r['flags'] == ['Phase ambiguity'] and r['phase_check'] == 'not_evaluated'
 
 
-def test_phase_incomplete_when_allele_missing_from_alignment(typed):
-    r = run([P1], est([P1, ('A*02:77:01', 'A*03:01:01:01')]), typed=typed)
-    assert r['phase_check'] == 'incomplete'
+def test_other_pair_allele_missing_from_alignment_is_flagged_incomplete(typed):
+    r = run([P1], est([P1], other=[('A*02:77:01', 'A*03:01:01:01')]), typed=typed)
+    assert r['flags'] == ['Phase ambiguity'] and r['phase_check'] == 'incomplete'
 
 
-def test_phase_incomplete_when_every_column_unknown():
+def test_other_pair_every_column_unknown_is_flagged_incomplete():
     unknown = {a: '??????????' for a in (*P1, *P2)}
-    r = run([P1], est([P1, P2]), typed=unknown)
-    assert r['phase_check'] == 'incomplete' and 'Phase ambiguity' not in r['flags']
+    r = run([P1], est([P1], other=[P2]), typed=unknown)
+    assert r['flags'] == ['Phase ambiguity'] and r['phase_check'] == 'incomplete'
 
 
-def test_no_competing_pairs(typed):
-    assert run([P1], est([P1]), typed=typed)['phase_check'] == 'no_competing'
+def test_no_other_pair(typed):
+    assert run([P1], est([P1]), typed=typed)['phase_check'] == 'no_other_pair'
 
 
 def test_low_exon_depth_triggers_qc_review():

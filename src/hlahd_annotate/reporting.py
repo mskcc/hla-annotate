@@ -9,17 +9,19 @@ Call Status (one or more):
                        unknown); combines with any of the above
   Failed               HLA-HD reported 'Not typed'; nothing else applies
 Flags:
-  Phase ambiguity      a competing genotype carries the same unordered bases at
-                       every exon 2+3 position but on the other chromosome
-  Shared P-group       a competing two-field genotype has the same P-groups
+  Phase ambiguity      HLA-HD listed an '#Other ambiguous pair' (est.txt) that the
+                       sequence test confirms is a phase conjugate of the reported
+                       pair over exons 2+3. Not testable (no alignment, allele
+                       missing) -> still flagged, trusting HLA-HD; phase_check says so.
+                       Identical over exons 2+3 -> no flag (information only).
+  Shared P-group       another read-tied best-pair genotype ('#Best allele pair')
+                       has the same P-groups as the reported one
   Frequency tie        the frequency tiebreak left several genotypes
   Low exon depth       exon 2 or 3 mean depth below threshold, either allele
   Incomplete exon coverage
-Competing genotypes are every other two-field genotype among HLA-HD's read-tied
-best-pair candidates ('#Best allele pair'). '#Other ambiguous pair' rows are NOT
-competing: HLA-HD ranks them below the best pair and prints no coverage for them
-(504-sample survey 2026-11-13: always one row, always a different two-field
-genotype). They stay in the TSV (ambiguous_alleles) as information only.
+  All loci homozygous  set in annotate.py across loci
+Survey 2026-11-13 (504 full-depth samples, 40 '#Other' class I pairs): 36 phase
+conjugates, 1 identical over exons 2+3, 3 alleles absent from IMGT 3.65.0.
 """
 from .alignment import phase_relation
 from .pgroup import lookup_pgroup
@@ -78,7 +80,7 @@ def classify(final_pairs, est, pgroups, typed_exons, coverage, min_depth):
     competing = {g: r for g, r in cands.items() if g != primary}
     if _shares_pgroup(primary, competing, pgroups):
         flags.append('Shared P-group')
-    phase_check, phased = _phase(reported[primary], competing, typed_exons)
+    phase_check, phased = _phase(reported[primary], est.get('other_pairs', []), typed_exons)
     if phased:
         flags.insert(0, 'Phase ambiguity')
 
@@ -126,25 +128,34 @@ def _shares_pgroup(primary, competing: dict, pgroups) -> bool:
     return mine is not None and any(_pgroup_pair(g, pgroups) == mine for g in competing)
 
 
-def _phase(primary_rep, competing: dict, typed_exons):
-    """('no_competing'|'not_evaluated'|'incomplete'|'evaluated', any phase conjugate)."""
-    if not competing:
-        return 'no_competing', False
+def _phase(primary_rep, other_pairs: list, typed_exons):
+    """Phase ambiguity from HLA-HD's '#Other ambiguous pair' rows.
+
+    Returns (phase_check, flag): phase_check is 'no_other_pair', 'evaluated'
+    (every row tested), 'not_evaluated' (no alignment) or 'incomplete' (some
+    row untestable). Untestable rows are flagged (HLA-HD lists these as the
+    phase alternative); rows identical over exons 2+3 are not.
+    """
+    if not other_pairs:
+        return 'no_other_pair', False
     if typed_exons is None:
-        return 'not_evaluated', False
-    complete, phased = True, False
-    for rep in competing.values():
-        alleles = (*primary_rep, *rep)
+        return 'not_evaluated', True
+    complete, flag = True, False
+    for other in other_pairs:
+        alleles = (*primary_rep, *other)
         if not all(a in typed_exons for a in alleles):
-            complete = False
+            complete, flag = False, True
             continue
         x = (typed_exons[alleles[0]], typed_exons[alleles[1]])
         y = (typed_exons[alleles[2]], typed_exons[alleles[3]])
         relation, unknown = phase_relation(x, y)
-        if unknown >= len(x[0]):  # nothing compared: not evidence of anything
-            complete = False
-        phased |= relation == 'phase'
-    return ('evaluated' if complete else 'incomplete'), phased
+        if unknown >= len(x[0]):  # nothing compared: untestable
+            complete, flag = False, True
+        elif relation == 'phase':
+            flag = True
+        # 'identical' (differs only outside exons 2+3) and 'different' (real base
+        # differences: an HLA-HD alternative, not phase; unseen in the survey) -> no flag
+    return ('evaluated' if complete else 'incomplete'), flag
 
 
 def _qc(coverage: list[dict], min_depth: float):

@@ -278,10 +278,9 @@ def test_two_homozygous_loci_are_normal(pgroup_file, tmp_path):
 
 
 def test_missing_alignment_file_degrades_locus_not_sample(pgroup_file, tmp_path, capsys):
-    rows = [f"HLA-A*02:01:01:01\tHLA-A*03:01:01:01\t{COV_GOOD}\t{COV_GOOD}",
-            f"HLA-A*02:02:01\tHLA-A*03:02:01\t{COV_GOOD}\t{COV_GOOD}"]
+    rows = [f"HLA-A*02:01:01:01\tHLA-A*03:01:01:01\t{COV_GOOD}\t{COV_GOOD}"]
     _write(tmp_path, 'S', "A\tHLA-A*02:01:01\tHLA-A*03:01:01\n" + HET_FINAL_BC,
-           {'A': _est(rows), 'B': HET_B, 'C': HET_C})
+           {'A': _est(rows, other=["HLA-A*02:02:01\tHLA-A*03:02:01"]), 'B': HET_B, 'C': HET_C})
     empty_align = tmp_path / 'align'
     empty_align.mkdir()
     df = annotate_sample(tmp_path, 'S', pgroup_file, alignment_dir=empty_align)

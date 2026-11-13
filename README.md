@@ -53,19 +53,19 @@ These locus-level columns repeat on each allele row of the TSV.
 
 | Flag | When |
 |---|---|
-| Phase ambiguity | A competing genotype has the same unordered bases at every exon 2+3 position but on the opposite chromosomes (sequence test on the IMGT alignment) |
-| Shared P-group | A competing two-field genotype maps to the same P-groups |
+| Phase ambiguity | HLA-HD's `#Other ambiguous pair` is a phase conjugate of the reported pair: same unordered bases at every exon 2+3 position, opposite chromosomes (sequence test on the IMGT alignment). Untestable → still flagged, `phase_check` says so; identical over exons 2+3 → not flagged |
+| Shared P-group | Another read-tied best-pair genotype (`#Best allele pair`) maps to the same P-groups |
 | Frequency tie | The frequency tiebreak left several genotypes |
 | Low exon depth | Exon 2 or 3 mean depth below `--min_exon_depth` for either allele |
 | Incomplete exon coverage | HLA-HD reports positions without coverage in exon 2 or 3 for either allele |
 | All loci homozygous | A, B and C are all homozygous at two fields (one homozygous locus is normal and is not flagged) |
 
-Competing genotypes are HLA-HD's read-tied best-pair candidates (`#Best allele pair`).
-`#Other ambiguous pair` rows are information only: HLA-HD ranks them below the best
-pair and prints no coverage for them, so they never set a flag (shown in
-`ambiguous_alleles` and in the HTML details). A class I locus missing from
+Shared P-group compares HLA-HD's read-tied best pairs (`#Best allele pair`); Phase
+ambiguity comes only from `#Other ambiguous pair` rows (in a 504-sample survey, 36 of
+the 37 testable rows were phase conjugates). The two never overlap.
+A class I locus missing from
 `final.result.txt` is reported as Failed with a warning. `phase_check` records whether the phase test
-ran (`evaluated`, `no_competing`, `not_evaluated`, `incomplete` when an allele is missing
+ran (`evaluated`, `no_other_pair`, `not_evaluated`, `incomplete` when an allele is missing
 from the alignment). `provenance` is `final_only` when `est.txt` is missing.
 `multiple_best_pairs` and `has_ambiguous_pair` are kept as raw `est.txt` indicators
 for backward compatibility; report `call_status`/`flags` instead.

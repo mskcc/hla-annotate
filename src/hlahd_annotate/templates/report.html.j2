@@ -91,11 +91,13 @@
          {{ locus.frequency_resolution_details }}</p>
     {% endif %}
     {% if locus.ambiguous_alleles %}
-      <p><strong>HLA-HD alternative pair (ranked below the best pair; information only):</strong>
-         {{ locus.ambiguous_alleles }}</p>
+      <p><strong>HLA-HD ambiguous pair (phase alternative, '#Other ambiguous pair'):</strong>
+         {{ locus.ambiguous_alleles }}
+         {% if 'Phase ambiguity' not in locus.flags %}&#8212; identical to the reported pair over exons 2&#8211;3, so not a phase difference.{% endif %}</p>
     {% endif %}
     {% if locus.phase_check in ['not_evaluated', 'incomplete'] %}
       <p><strong>Phase ambiguity check:</strong> {{ locus.phase_check | replace('_', ' ') }}
+         &#8212; flagged from HLA-HD's ambiguous pair but not confirmed by sequence
          (no IMGT alignment given, or an allele was missing from it).</p>
     {% endif %}
     {% if 'Low exon depth' in locus.flags or 'Incomplete exon coverage' in locus.flags %}
@@ -122,7 +124,7 @@
   <strong>Failed:</strong> HLA-HD reported Not typed for the locus. No allele or P-group result is reported.<br>
   <br>
   <strong>Flags:</strong><br>
-  <strong>Phase ambiguity:</strong> Competing genotype assignments differ only in haplotype phase and are equally supported by the sequencing reads.<br>
+  <strong>Phase ambiguity:</strong> Competing genotype assignments differ only in haplotype phase and are equally supported by the sequencing reads (HLA-HD's ambiguous pair, confirmed over exons 2&#8211;3 against IPD-IMGT/HLA).<br>
   <strong>Shared P-group:</strong> Competing two-field genotype assignments map to the same P-group and therefore encode identical peptide-binding domain amino acid sequences.<br>
   <strong>Frequency tie:</strong> Population-frequency ranking did not distinguish between the remaining read-supported genotype assignments; all remaining best-pair assignments are reported.<br>
   <strong>Low exon depth:</strong> HLA-HD mean coverage for exon 2 or exon 3 is below {{ min_exon_depth | int }}&times; for either allele.<br>
