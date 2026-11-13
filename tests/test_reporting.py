@@ -97,25 +97,39 @@ def test_homozygous_slot_never_invents_heterozygous_candidates():
     assert r['frequency_resolution_details'] == 'A*02:01/A*02:01; A*02:99/A*02:99'
 
 
-def test_phase_ambiguity_from_other_pair(typed):
-    r = run([P1], est([P1], other=[P2]), typed=typed)
-    assert r['call_status'] == ['Unique']
+def test_phase_ambiguity_between_read_tied_best_pairs(typed):
+    # Two read-tied best pairs that are phase conjugates; frequency kept P1.
+    r = run([P1], est([P1, P2]), typed=typed)
+    assert r['call_status'] == ['Frequency-resolved']
     assert r['flags'] == ['Phase ambiguity'] and r['phase_check'] == 'evaluated'
 
 
-def test_identical_other_pair_is_shared_pgroup_not_phase(typed):
-    r = run([P1], est([P1], other=[('A*02:99:01', 'A*03:01:01:01')]), typed=typed)
-    assert r['flags'] == ['Shared P-group']
+def test_shared_pgroup_between_read_tied_best_pairs(typed):
+    r = run([P1], est([P1, ('A*02:99:01', 'A*03:01:01:01')]), typed=typed)
+    assert r['call_status'] == ['Frequency-resolved'] and r['flags'] == ['Shared P-group']
+
+
+def test_other_ambiguous_pair_never_drives_flags(typed):
+    # HLA-HD ranks '#Other ambiguous pair' below the best pair: trust the best call.
+    r = run([P1], est([P1], other=[P2, ('A*02:99:01', 'A*03:01:01:01')]), typed=typed)
+    assert r['call_status'] == ['Unique'] and r['flags'] == []
+    assert r['phase_check'] == 'no_competing'
 
 
 def test_phase_not_evaluated_without_alignment():
-    r = run([P1], est([P1], other=[P2]))
+    r = run([P1], est([P1, P2]))
     assert r['phase_check'] == 'not_evaluated' and 'Phase ambiguity' not in r['flags']
 
 
 def test_phase_incomplete_when_allele_missing_from_alignment(typed):
-    r = run([P1], est([P1], other=[('A*02:77:01', 'A*03:01:01:01')]), typed=typed)
+    r = run([P1], est([P1, ('A*02:77:01', 'A*03:01:01:01')]), typed=typed)
     assert r['phase_check'] == 'incomplete'
+
+
+def test_phase_incomplete_when_every_column_unknown():
+    unknown = {a: '??????????' for a in (*P1, *P2)}
+    r = run([P1], est([P1, P2]), typed=unknown)
+    assert r['phase_check'] == 'incomplete' and 'Phase ambiguity' not in r['flags']
 
 
 def test_no_competing_pairs(typed):

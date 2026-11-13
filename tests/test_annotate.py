@@ -123,11 +123,14 @@ def test_annotate_column_order_is_fixed(fixtures_dir, pgroup_file):
     assert list(df.columns) == EXPECTED_COLUMNS
 
 
-def test_annotate_empty_result_keeps_columns(pgroup_file, tmp_path):
+def test_annotate_missing_class_i_loci_are_failed_not_dropped(pgroup_file, tmp_path, capsys):
+    # e.g. a bare "Couldn't read result file." line replaced the locus line
     (tmp_path / 'empty_final.result.txt').write_text("DRB1\tHLA-DRB1*15:01:01\t-\n")
     df = annotate_sample(tmp_path, 'empty', pgroup_file)
-    assert df.empty
     assert list(df.columns) == EXPECTED_COLUMNS
+    assert sorted(df['locus'].unique()) == ['A', 'B', 'C']
+    assert set(df['call_status']) == {'Failed'} and df['allele'].isna().all()
+    assert capsys.readouterr().err.count('reported as Failed') == 3
 
 
 def test_annotate_homozygous_keeps_both_alleles(fixtures_dir, pgroup_file):
@@ -205,3 +208,82 @@ def test_annotate_flags_incomp_without_count(pgroup_file, tmp_path):
     assert bool(a.loc['allele1', 'incomplete_coverage']) is True
     assert pd.isna(a.loc['allele1', 'incomplete_bp'])
     assert a.loc['allele2', 'incomplete_bp'] == 3
+
+
+# --- review findings 2026-11-13: real HLA-HD shapes ---
+
+COV_GOOD = 'exon2:212.4:comp.0,exon3:198.7:comp.0'
+COV_LOW = 'exon2:30.0:comp.0,exon3:31.0:comp.0'
+
+
+def _write(tmp_path, sample, final, ests):
+    (tmp_path / f'{sample}_final.result.txt').write_text(final)
+    for locus, text in ests.items():
+        (tmp_path / f'{sample}_{locus}.est.txt').write_text(text)
+
+
+def _est(rows, other=()):
+    out = [f"#Pair count\t{len(rows)}", f"#Best allele pair\t{len(rows)}", *rows]
+    if other:
+        out += [f"#Other ambiguous pair\t{len(other)}", *other]
+    return '\n'.join(out) + '\n'
+
+
+HET_B = _est([f"HLA-B*07:02:01:01\tHLA-B*44:02:01:01\t{COV_GOOD}\t{COV_GOOD}"])
+HET_C = _est([f"HLA-C*07:02:01:01\tHLA-C*05:01:01:01\t{COV_GOOD}\t{COV_GOOD}"])
+HET_FINAL_BC = "B\tHLA-B*07:02:01\tHLA-B*44:02:01\nC\tHLA-C*07:02:01\tHLA-C*05:01:01\n"
+
+
+def test_real_homozygous_est_is_not_sent_to_review(pgroup_file, tmp_path):
+    # HLA-HD writes '-' for allele 2 AND for its coverage column.
+    _write(tmp_path, 'S', "A\tHLA-A*02:01:01\t-\n" + HET_FINAL_BC,
+           {'A': _est([f"HLA-A*02:01:01:01\t-\t{COV_GOOD}\t-"]), 'B': HET_B, 'C': HET_C})
+    a = annotate_sample(tmp_path, 'S', pgroup_file).set_index(['locus', 'allele_position'])
+    assert a.loc[('A', 'allele2'), 'exon2_depth'] == 212.4
+    assert a.loc[('A', 'allele1'), 'call_status'] == 'Unique'
+    assert a.loc[('A', 'allele1'), 'flags'] == ''
+
+
+def test_coverage_taken_from_the_est_line_of_the_reported_pair(pgroup_file, tmp_path):
+    # Frequency picked line 2's pair; line 1 has low depth and must not leak in.
+    rows = [f"HLA-A*68:01:01:01\tHLA-A*03:01:01:01\t{COV_LOW}\t{COV_LOW}",
+            f"HLA-A*02:01:01:01\tHLA-A*03:01:01:01\t{COV_GOOD}\t{COV_GOOD}"]
+    _write(tmp_path, 'S', "A\tHLA-A*02:01:01\tHLA-A*03:01:01\n" + HET_FINAL_BC,
+           {'A': _est(rows), 'B': HET_B, 'C': HET_C})
+    a = annotate_sample(tmp_path, 'S', pgroup_file)
+    a = a[a['locus'] == 'A'].set_index('allele_position')
+    assert a.loc['allele1', 'exon2_depth'] == 212.4
+    assert a.loc['allele1', 'call_status'] == 'Frequency-resolved'
+    assert 'Low exon depth' not in a.loc['allele1', 'flags']
+
+
+def test_all_loci_homozygous_triggers_qc_review(pgroup_file, tmp_path):
+    ests = {g: _est([f"HLA-{g}*{x}\t-\t{COV_GOOD}\t-"]) for g, x in
+            (('A', '02:01:01:01'), ('B', '07:02:01:01'), ('C', '07:02:01:01'))}
+    final = "A\tHLA-A*02:01:01\t-\nB\tHLA-B*07:02:01\t-\nC\tHLA-C*07:02:01\t-\n"
+    _write(tmp_path, 'S', final, ests)
+    df = annotate_sample(tmp_path, 'S', pgroup_file)
+    assert set(df['call_status']) == {'Unique;QC review'}
+    assert set(df['flags']) == {'All loci homozygous'}
+
+
+def test_two_homozygous_loci_are_normal(pgroup_file, tmp_path):
+    ests = {g: _est([f"HLA-{g}*{x}\t-\t{COV_GOOD}\t-"]) for g, x in
+            (('A', '02:01:01:01'), ('B', '07:02:01:01'))}
+    ests['C'] = HET_C
+    final = "A\tHLA-A*02:01:01\t-\nB\tHLA-B*07:02:01\t-\nC\tHLA-C*07:02:01\tHLA-C*05:01:01\n"
+    _write(tmp_path, 'S', final, ests)
+    df = annotate_sample(tmp_path, 'S', pgroup_file)
+    assert set(df['call_status']) == {'Unique'} and set(df['flags']) == {''}
+
+
+def test_missing_alignment_file_degrades_locus_not_sample(pgroup_file, tmp_path, capsys):
+    rows = [f"HLA-A*02:01:01:01\tHLA-A*03:01:01:01\t{COV_GOOD}\t{COV_GOOD}",
+            f"HLA-A*02:02:01\tHLA-A*03:02:01\t{COV_GOOD}\t{COV_GOOD}"]
+    _write(tmp_path, 'S', "A\tHLA-A*02:01:01\tHLA-A*03:01:01\n" + HET_FINAL_BC,
+           {'A': _est(rows), 'B': HET_B, 'C': HET_C})
+    empty_align = tmp_path / 'align'
+    empty_align.mkdir()
+    df = annotate_sample(tmp_path, 'S', pgroup_file, alignment_dir=empty_align)
+    assert df[df['locus'] == 'A']['phase_check'].iloc[0] == 'not_evaluated'
+    assert 'no IMGT alignment A_nuc.txt' in capsys.readouterr().err

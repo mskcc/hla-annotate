@@ -96,6 +96,8 @@ def parse_est(est_file: Path) -> dict:
         best_pair_slots (list[tuple[list, list]]): per best pair, every allele in
             each slot's comma list (HLA- stripped); the pre-tiebreak candidates
         other_pairs (list[tuple[str, str]]): every '#Other ambiguous pair' row
+            (informational: HLA-HD ranked these below the best pair)
+        other_rows_unparsed (int): '#Other' rows that yielded no allele
         est_found (bool): False when the file does not exist
     """
     result = {
@@ -106,6 +108,7 @@ def parse_est(est_file: Path) -> dict:
         'best_pairs': [],
         'best_pair_slots': [],
         'other_pairs': [],
+        'other_rows_unparsed': 0,
         'est_found': est_file.exists(),
     }
 
@@ -155,26 +158,39 @@ def _slot_alleles(col: str) -> list[str]:
 
 
 def _add_other_pair(cols: list[str], result: dict) -> None:
-    """'#Other ambiguous pair' data line: one allele per column, kept in order."""
+    """'#Other ambiguous pair' data line (no coverage columns: HLA-HD ranked it
+    below the best pair). A slot may be a comma list or '-'; the first allele
+    represents it. Rows that yield no allele are counted, never silently lost."""
     if len(cols) < 2:
+        result['other_rows_unparsed'] += 1
         return
-    a1 = _est_allele(cols[0].strip().removeprefix('HLA-'))
-    a2 = _est_allele(cols[1].strip().removeprefix('HLA-'))
-    if a1 and a2:
+    a1 = _first_allele(cols[0])
+    a2 = _first_allele(cols[1]) or a1  # '-' second slot = homozygous
+    if a1:
         result['other_pairs'].append((a1, a2))
+    else:
+        result['other_rows_unparsed'] += 1
 
 
 def _add_best_pair(cols: list[str], result: dict) -> None:
-    """Best pair data line: col0/col1 comma lists, col2/col3 coverage."""
+    """Best pair data line: col0/col1 comma lists, col2/col3 coverage.
+
+    A homozygous pair has '-' for slot 2 and for its coverage (HLA-HD
+    Select.h writes one coverage column), so allele 2 reuses allele 1's.
+    """
     slot1 = _slot_alleles(cols[0]) if len(cols) > 0 else []
     slot2 = _slot_alleles(cols[1]) if len(cols) > 1 else []
+    cov1 = _parse_coverage(cols[2]) if len(cols) > 2 else _parse_coverage('')
+    cov2 = _parse_coverage(cols[3]) if len(cols) > 3 else _parse_coverage('')
+    if slot1 and not slot2 and cov2['exon2_depth'] is None and cov2['exon3_depth'] is None:
+        cov2 = dict(cov1)
     result['best_pair_alleles'].extend(slot1 + slot2)
     result['best_pair_slots'].append((slot1, slot2))
     result['best_pairs'].append({
         'allele1': _first_allele(cols[0]) if len(cols) > 0 else None,
         'allele2': _first_allele(cols[1]) if len(cols) > 1 else None,
-        'allele1_coverage': _parse_coverage(cols[2]) if len(cols) > 2 else _parse_coverage(''),
-        'allele2_coverage': _parse_coverage(cols[3]) if len(cols) > 3 else _parse_coverage(''),
+        'allele1_coverage': cov1,
+        'allele2_coverage': cov2,
     })
 
 

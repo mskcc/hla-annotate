@@ -15,8 +15,11 @@ Flags:
   Frequency tie        the frequency tiebreak left several genotypes
   Low exon depth       exon 2 or 3 mean depth below threshold, either allele
   Incomplete exon coverage
-Competing genotypes are every other two-field genotype among the read-tied
-candidates, the reported pairs and the '#Other ambiguous pair' rows.
+Competing genotypes are every other two-field genotype among HLA-HD's read-tied
+best-pair candidates ('#Best allele pair'). '#Other ambiguous pair' rows are NOT
+competing: HLA-HD ranks them below the best pair and prints no coverage for them
+(504-sample survey 2026-11-13: always one row, always a different two-field
+genotype). They stay in the TSV (ambiguous_alleles) as information only.
 """
 from .alignment import phase_relation
 from .pgroup import lookup_pgroup
@@ -55,7 +58,7 @@ def classify(final_pairs, est, pgroups, typed_exons, coverage, min_depth):
     final_pairs: [(a1, a2)] from final.result.txt, None for 'Not typed'
     est: parse_est() result; pgroups: P-group lookup
     typed_exons: {allele: exon 2+3 columns} or None when no alignment was given
-    coverage: coverage dicts of the reported alleles (primary pair)
+    coverage: coverage dicts of every reported allele
     """
     pairs = [p for p in final_pairs if p[0] is not None and p[1] is not None]
     if not pairs:
@@ -72,8 +75,7 @@ def classify(final_pairs, est, pgroups, typed_exons, coverage, min_depth):
 
     status, flags, details = _resolution(reported, cands)
     primary = next(iter(reported))
-    others = {genotype(p): p for p in est.get('other_pairs', [])}
-    competing = {g: r for g, r in {**cands, **others}.items() if g != primary}
+    competing = {g: r for g, r in cands.items() if g != primary}
     if _shares_pgroup(primary, competing, pgroups):
         flags.append('Shared P-group')
     phase_check, phased = _phase(reported[primary], competing, typed_exons)
@@ -138,7 +140,10 @@ def _phase(primary_rep, competing: dict, typed_exons):
             continue
         x = (typed_exons[alleles[0]], typed_exons[alleles[1]])
         y = (typed_exons[alleles[2]], typed_exons[alleles[3]])
-        phased |= phase_relation(x, y)[0] == 'phase'
+        relation, unknown = phase_relation(x, y)
+        if unknown >= len(x[0]):  # nothing compared: not evidence of anything
+            complete = False
+        phased |= relation == 'phase'
     return ('evaluated' if complete else 'incomplete'), phased
 
 

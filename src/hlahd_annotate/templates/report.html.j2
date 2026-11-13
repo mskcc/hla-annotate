@@ -80,7 +80,7 @@
 
 {% set detailed = [] %}
 {% for locus in loci if locus.flags or locus.frequency_resolution_details or locus.est_mismatch
-   or locus.phase_check in ['not_evaluated', 'incomplete'] %}{% set _ = detailed.append(locus) %}{% endfor %}
+   or locus.ambiguous_alleles or locus.phase_check in ['not_evaluated', 'incomplete'] %}{% set _ = detailed.append(locus) %}{% endfor %}
 {% if detailed %}
 <h2>Details</h2>
 {% for locus in detailed %}
@@ -90,8 +90,9 @@
       <p><strong>Frequency resolution details</strong> (equally supported by the reads):
          {{ locus.frequency_resolution_details }}</p>
     {% endif %}
-    {% if locus.ambiguous_alleles and ('Phase ambiguity' in locus.flags or 'Shared P-group' in locus.flags) %}
-      <p><strong>Equally supported pair(s) not in HLA-HD's final result:</strong> {{ locus.ambiguous_alleles }}</p>
+    {% if locus.ambiguous_alleles %}
+      <p><strong>HLA-HD alternative pair (ranked below the best pair; information only):</strong>
+         {{ locus.ambiguous_alleles }}</p>
     {% endif %}
     {% if locus.phase_check in ['not_evaluated', 'incomplete'] %}
       <p><strong>Phase ambiguity check:</strong> {{ locus.phase_check | replace('_', ' ') }}
@@ -125,6 +126,7 @@
   <strong>Shared P-group:</strong> Competing two-field genotype assignments map to the same P-group and therefore encode identical peptide-binding domain amino acid sequences.<br>
   <strong>Frequency tie:</strong> Population-frequency ranking did not distinguish between the remaining read-supported genotype assignments; all remaining best-pair assignments are reported.<br>
   <strong>Low exon depth:</strong> HLA-HD mean coverage for exon 2 or exon 3 is below {{ min_exon_depth | int }}&times; for either allele.<br>
+  <strong>All loci homozygous:</strong> HLA-A, -B and -C are all homozygous at two-field resolution; reviewed because this is uncommon and can indicate allele dropout or loss of heterozygosity.<br>
   <strong>Incomplete exon coverage:</strong> HLA-HD identifies one or more positions without coverage in exon 2 or exon 3 for either allele. A "(!)" marks the affected allele.
 </div>
 
