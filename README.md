@@ -54,14 +54,15 @@ These locus-level columns repeat on each allele row of the TSV.
 | Flag | When |
 |---|---|
 | Phase ambiguity | HLA-HD's `#Other ambiguous pair` is a phase conjugate of the reported pair: same unordered bases at every exon 2+3 position, opposite chromosomes (sequence test on the IMGT alignment). Untestable → still flagged, `phase_check` says so; identical over exons 2+3 → not flagged |
-| Shared P-group | The two reported alleles at the locus are different two-field alleles in the same P-group (identical peptide-binding domain on both chromosomes). A homozygous locus is not flagged |
+| Shared P-group | Another read-tied best-pair genotype (`#Best allele pair`) maps to the same P-groups |
 | Frequency tie | The frequency tiebreak left several genotypes |
 | Low exon depth | Exon 2 or 3 mean depth below `--min_exon_depth` for either allele |
 | Incomplete exon coverage | HLA-HD reports positions without coverage in exon 2 or 3 for either allele |
 | All loci homozygous | A, B and C are all homozygous at two fields (one homozygous locus is normal and is not flagged) |
 
-Phase ambiguity comes only from `#Other ambiguous pair` rows (in a 504-sample survey,
-36 of the 37 testable rows were phase conjugates).
+Shared P-group compares HLA-HD's read-tied best pairs (`#Best allele pair`); Phase
+ambiguity comes only from `#Other ambiguous pair` rows (in a 504-sample survey, 36 of
+the 37 testable rows were phase conjugates). The two never overlap.
 A class I locus missing from
 `final.result.txt` is reported as Failed with a warning. `phase_check` records whether the phase test
 ran (`evaluated`, `no_other_pair`, `not_evaluated`, `incomplete` when an allele is missing
