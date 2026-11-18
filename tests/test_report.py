@@ -17,6 +17,7 @@ def _make_row(
     incomplete_bp=None,
     call_status='Unique', flags='', two_field_genotype='A*02:01/A*03:01',
     frequency_resolution_details=None, phase_check='no_competing',
+    other_pair_relation='', incomplete_allele_detail='',
 ):
     if exon2_incomplete is None:
         exon2_incomplete = bool(exon2_incomp)
@@ -42,6 +43,8 @@ def _make_row(
         'two_field_genotype': two_field_genotype,
         'frequency_resolution_details': frequency_resolution_details,
         'phase_check': phase_check,
+        'other_pair_relation': other_pair_relation,
+        'incomplete_allele_detail': incomplete_allele_detail,
     }
 
 
@@ -275,3 +278,33 @@ def test_render_report_flags_incomp_zero(tmp_path):
     assert '<span class="badge badge-red">Incomplete exon coverage</span>' in html
     assert '(!)' in html
     assert '0 bp incomplete' in html
+
+
+OTHER = dict(has_ambiguous_pair=True, ambiguous_alleles='A*11:01:01 / A*24:02:01',
+             phase_check='evaluated')
+
+
+def test_render_report_other_pair_that_differs_is_never_called_identical(tmp_path):
+    html = _html(_pair(other_pair_relation='different', **OTHER), tmp_path)
+    assert 'differs from the reported pair' in html
+    assert 'identical to the reported pair' not in html
+
+
+def test_render_report_other_pair_identical_is_stated(tmp_path):
+    html = _html(_pair(other_pair_relation='identical', **OTHER), tmp_path)
+    assert 'identical to the reported pair' in html
+    assert 'differs from the reported pair' not in html
+
+
+def test_render_report_incomplete_allele_not_evaluated_is_stated(tmp_path):
+    html = _html(_pair(incomplete_allele_detail='not evaluated'), tmp_path)
+    assert 'Incomplete allele check:</strong> not evaluated' in html
+
+
+def test_render_report_allele_absent_from_dictionary_is_stated(tmp_path):
+    html = _html(_pair(incomplete_allele_detail='A*02:01:01 not in HLA-HD dictionary'), tmp_path)
+    assert 'A*02:01:01 not in HLA-HD dictionary' in html
+
+
+def test_render_report_complete_allele_has_no_incomplete_allele_line(tmp_path):
+    assert 'Incomplete allele' not in _html(_pair(), tmp_path)

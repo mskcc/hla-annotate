@@ -112,6 +112,24 @@ def test_other_pair_identical_over_typed_exons_is_not_flagged(typed):
 def test_other_pair_with_real_base_differences_is_not_phase(typed):
     r = run([P1], est([P1], other=[('A*02:02:01', 'A*03:01:01:01')]), typed=typed)
     assert 'Phase ambiguity' not in r['flags']
+    assert r['other_pair_relation'] == 'different'  # reported, so the HTML never says 'identical'
+
+
+def test_other_pair_relations_are_recorded_per_row(typed):
+    r = run([P1], est([P1], other=[P2, ('A*02:99:01', 'A*03:01:01:01')]), typed=typed)
+    assert r['other_pair_relation'] == 'phase;identical'
+
+
+def test_unparsed_other_rows_are_flagged_incomplete_not_dropped(typed):
+    e = {**est([P1]), 'other_rows_unparsed': 1}
+    r = run([P1], e, typed=typed)
+    assert r['flags'] == ['Phase ambiguity'] and r['phase_check'] == 'incomplete'
+    assert r['other_pair_relation'] == 'untestable'
+
+
+def test_unparsed_other_rows_without_alignment_are_not_evaluated():
+    r = run([P1], {**est([P1]), 'other_rows_unparsed': 2})
+    assert r['flags'] == ['Phase ambiguity'] and r['phase_check'] == 'not_evaluated'
 
 
 def test_other_pair_never_sets_shared_pgroup(typed):

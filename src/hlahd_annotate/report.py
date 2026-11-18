@@ -99,6 +99,7 @@ def render_report(
             'frequency_resolution_details': _text(first.get('frequency_resolution_details')),
             'phase_check': first.get('phase_check'),
             'incomplete_allele_detail': _text(first.get('incomplete_allele_detail')),
+            'other_pair_relation': _split(first.get('other_pair_relation')),
             'est_mismatch': bool((a1 and a1['est_mismatch']) or (a2 and a2['est_mismatch'])),
             'ambiguous_alleles': a1['ambiguous_alleles'] if a1 else None,
             'est_mismatch_detail': (

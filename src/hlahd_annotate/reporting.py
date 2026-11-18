@@ -80,7 +80,8 @@ def classify(final_pairs, est, pgroups, typed_exons, coverage, min_depth):
     competing = {g: r for g, r in cands.items() if g != primary}
     if _shares_pgroup(primary, competing, pgroups):
         flags.append('Shared P-group')
-    phase_check, phased = _phase(reported[primary], est.get('other_pairs', []), typed_exons)
+    phase_check, phased, relations = _phase(reported[primary], est.get('other_pairs', []),
+                                            typed_exons, est.get('other_rows_unparsed', 0))
     if phased:
         flags.insert(0, 'Phase ambiguity')
 
@@ -94,6 +95,7 @@ def classify(final_pairs, est, pgroups, typed_exons, coverage, min_depth):
         'call_status': status, 'flags': flags,
         'frequency_resolution_details': details,
         'provenance': provenance, 'phase_check': phase_check,
+        'other_pair_relation': ';'.join(relations),
         'qc_evaluable': qc_evaluable,
     }
 
@@ -101,7 +103,7 @@ def classify(final_pairs, est, pgroups, typed_exons, coverage, min_depth):
 def _failed():
     return {'two_field_genotype': None, 'call_status': ['Failed'], 'flags': [],
             'frequency_resolution_details': None, 'provenance': 'final_only',
-            'phase_check': 'not_applicable', 'qc_evaluable': False}
+            'phase_check': 'not_applicable', 'other_pair_relation': '', 'qc_evaluable': False}
 
 
 def _resolution(reported: dict, cands: dict):
@@ -128,34 +130,42 @@ def _shares_pgroup(primary, competing: dict, pgroups) -> bool:
     return mine is not None and any(_pgroup_pair(g, pgroups) == mine for g in competing)
 
 
-def _phase(primary_rep, other_pairs: list, typed_exons):
+def _phase(primary_rep, other_pairs: list, typed_exons, unparsed: int = 0):
     """Phase ambiguity from HLA-HD's '#Other ambiguous pair' rows.
 
-    Returns (phase_check, flag): phase_check is 'no_other_pair', 'evaluated'
-    (every row tested), 'not_evaluated' (no alignment) or 'incomplete' (some
-    row untestable). Untestable rows are flagged (HLA-HD lists these as the
-    phase alternative); rows identical over exons 2+3 are not.
+    Returns (phase_check, flag, relations): phase_check is 'no_other_pair',
+    'evaluated' (every row tested), 'not_evaluated' (no alignment) or
+    'incomplete' (some row untestable or unparsed). Untestable rows are flagged
+    (HLA-HD lists these as the phase alternative); rows identical over exons 2+3
+    are not. relations holds one of 'phase', 'identical', 'different' or
+    'untestable' per row, so the report can say what each row was.
     """
-    if not other_pairs:
-        return 'no_other_pair', False
+    if not other_pairs and not unparsed:
+        return 'no_other_pair', False, []
     if typed_exons is None:
-        return 'not_evaluated', True
-    complete, flag = True, False
+        return 'not_evaluated', True, []
+    # An '#Other' row that yielded no allele cannot be tested: flag it, never drop it.
+    complete, flag = not unparsed, bool(unparsed)
+    relations = ['untestable'] * unparsed
     for other in other_pairs:
         alleles = (*primary_rep, *other)
         if not all(a in typed_exons for a in alleles):
             complete, flag = False, True
+            relations.append('untestable')
             continue
         x = (typed_exons[alleles[0]], typed_exons[alleles[1]])
         y = (typed_exons[alleles[2]], typed_exons[alleles[3]])
         relation, unknown = phase_relation(x, y)
         if unknown >= len(x[0]):  # nothing compared: untestable
             complete, flag = False, True
-        elif relation == 'phase':
-            flag = True
+            relations.append('untestable')
+            continue
+        flag |= relation == 'phase'
         # 'identical' (differs only outside exons 2+3) and 'different' (real base
-        # differences: an HLA-HD alternative, not phase; unseen in the survey) -> no flag
-    return ('evaluated' if complete else 'incomplete'), flag
+        # differences: an HLA-HD alternative, not phase; unseen in the survey) -> no
+        # flag, but the relation is reported so the HTML never calls 'different' identical.
+        relations.append(relation)
+    return ('evaluated' if complete else 'incomplete'), flag, relations
 
 
 def _qc(coverage: list[dict], min_depth: float):

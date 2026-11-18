@@ -70,7 +70,12 @@ the 37 testable rows were phase conjugates). The two never overlap.
 A class I locus missing from
 `final.result.txt` is reported as Failed with a warning. `phase_check` records whether the phase test
 ran (`evaluated`, `no_other_pair`, `not_evaluated`, `incomplete` when an allele is missing
-from the alignment). `provenance` is `final_only` when `est.txt` is missing.
+from the alignment or an `#Other` row could not be read; unreadable rows are flagged, never
+dropped). `other_pair_relation` gives each `#Other` row's result (`phase`, `identical`,
+`different`, `untestable`): a `different` row is a real alternative genotype, not a phase
+swap, and is not flagged, but the HTML says so. The HTML also shows
+`incomplete_allele_detail` whenever it is not empty (`not evaluated`, or an allele missing
+from the dictionary). `provenance` is `final_only` when `est.txt` is missing.
 `multiple_best_pairs` and `has_ambiguous_pair` are kept as raw `est.txt` indicators
 for backward compatibility; report `call_status`/`flags` instead.
 

@@ -81,7 +81,7 @@
 {% set detailed = [] %}
 {% for locus in loci if locus.flags or locus.frequency_resolution_details or locus.est_mismatch
    or locus.ambiguous_alleles or locus.phase_check in ['not_evaluated', 'incomplete']
-   or 'Incomplete Allele' in locus.flags %}{% set _ = detailed.append(locus) %}{% endfor %}
+   or locus.incomplete_allele_detail %}{% set _ = detailed.append(locus) %}{% endfor %}
 {% if detailed %}
 <h2>Details</h2>
 {% for locus in detailed %}
@@ -94,15 +94,19 @@
     {% if locus.ambiguous_alleles %}
       <p><strong>HLA-HD ambiguous pair (phase alternative, '#Other ambiguous pair'):</strong>
          {{ locus.ambiguous_alleles }}
-         {% if 'Phase ambiguity' not in locus.flags %}&#8212; identical to the reported pair over exons 2&#8211;3, so not a phase difference.{% endif %}</p>
+         {% if 'different' in locus.other_pair_relation %}&#8212; differs from the reported pair at bases in exons 2&#8211;3: an alternative genotype, not a phase swap. Review the read evidence.
+         {% elif locus.other_pair_relation and 'Phase ambiguity' not in locus.flags %}&#8212; identical to the reported pair over exons 2&#8211;3, so not a phase difference.{% endif %}</p>
     {% endif %}
     {% if 'Incomplete Allele' in locus.flags %}
       <p><strong>Incomplete allele in the HLA-HD dictionary:</strong> {{ locus.incomplete_allele_detail }}</p>
+    {% elif locus.incomplete_allele_detail %}
+      <p><strong>Incomplete allele check:</strong> {{ locus.incomplete_allele_detail }}
+         &#8212; not confirmed complete (no HLA-HD dictionary given, or an allele was missing from it).</p>
     {% endif %}
     {% if locus.phase_check in ['not_evaluated', 'incomplete'] %}
       <p><strong>Phase ambiguity check:</strong> {{ locus.phase_check | replace('_', ' ') }}
          &#8212; flagged from HLA-HD's ambiguous pair but not confirmed by sequence
-         (no IMGT alignment given, or an allele was missing from it).</p>
+         (no IMGT alignment given, an allele was missing from it, or a row could not be read).</p>
     {% endif %}
     {% if 'Low exon depth' in locus.flags or 'Incomplete exon coverage' in locus.flags %}
       <p><strong>Coverage (mean depth, incomplete positions):</strong></p>

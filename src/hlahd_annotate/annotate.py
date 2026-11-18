@@ -26,7 +26,7 @@ ANNOTATED_COLUMNS = [
     # Reporting model (locus-level values, repeated on each allele row).
     'two_field', 'two_field_genotype', 'call_status', 'flags',
     'frequency_resolution_details', 'provenance', 'phase_check', 'qc_evaluable',
-    'incomplete_allele_detail',
+    'incomplete_allele_detail', 'other_pair_relation',
 ]
 # multiple_best_pairs / has_ambiguous_pair are raw est.txt indicators ('#Best allele
 # pair' > 1, '#Other ambiguous pair' present). Report call_status and flags instead.
