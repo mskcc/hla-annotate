@@ -19,7 +19,6 @@ Flags:
   Frequency tie        the frequency tiebreak left several genotypes
   Low exon depth       exon 2 or 3 mean depth below threshold, either allele
   Incomplete exon coverage
-  All loci homozygous  set in annotate.py across loci
 Survey 2026-11-13 (504 full-depth samples, 40 '#Other' class I pairs): 36 phase
 conjugates, 1 identical over exons 2+3, 3 alleles absent from IMGT 3.65.0.
 """

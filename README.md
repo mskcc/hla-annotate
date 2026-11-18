@@ -51,7 +51,7 @@ These locus-level columns repeat on each allele row of the TSV.
 | Unique | One genotype remains after truncating every candidate to two fields |
 | Frequency-resolved | Several two-field genotypes tied on reads (`#Best allele pair`); HLA-HD's frequency tiebreak kept one. `frequency_resolution_details` lists the tied genotypes |
 | Multiple best pairs | Several two-field genotypes remain in `final.result.txt` (always with the Frequency tie flag) |
-| QC review | Low exon depth, Incomplete exon coverage, All loci homozygous, or coverage unknown (`qc_evaluable` false). Combines with the above |
+| QC review | Low exon depth, Incomplete exon coverage, or coverage unknown (`qc_evaluable` false). Combines with the above |
 | Failed | HLA-HD reported `Not typed`; no other status applies |
 
 | Flag | When |
@@ -62,7 +62,6 @@ These locus-level columns repeat on each allele row of the TSV.
 | Low exon depth | Exon 2 or 3 mean depth below `--min_exon_depth` for either allele |
 | Incomplete exon coverage | HLA-HD reports positions without coverage in exon 2 or 3 for either allele |
 | Incomplete Allele | A reported allele lacks one or more exons in HLA-HD's dictionary (`<GENE>/<GENE>.list`, passed with `--hlahd_dictionary_dir`); `incomplete_allele_detail` lists them. Without the dictionary: `not evaluated` |
-| All loci homozygous | A, B and C are all homozygous at two fields (one homozygous locus is normal and is not flagged) |
 
 Shared P-group compares HLA-HD's read-tied best pairs (`#Best allele pair`); Phase
 ambiguity comes only from `#Other ambiguous pair` rows (in a 504-sample survey, 36 of

@@ -22,7 +22,7 @@ STATUS_CLASS = {'Unique': 'badge-green', 'Frequency-resolved': 'badge-yellow',
                 'Failed': 'badge-darkred'}
 FLAG_CLASS = {'Phase ambiguity': 'badge-darkred', 'Shared P-group': 'badge-grey',
               'Frequency tie': 'badge-orange', 'Low exon depth': 'badge-red',
-              'Incomplete exon coverage': 'badge-red', 'All loci homozygous': 'badge-red',
+              'Incomplete exon coverage': 'badge-red',
               'Incomplete Allele': 'badge-yellow'}
 
 

@@ -258,14 +258,14 @@ def test_coverage_taken_from_the_est_line_of_the_reported_pair(pgroup_file, tmp_
     assert 'Low exon depth' not in a.loc['allele1', 'flags']
 
 
-def test_all_loci_homozygous_triggers_qc_review(pgroup_file, tmp_path):
+def test_all_loci_homozygous_is_not_flagged(pgroup_file, tmp_path):
+    # Decided 2026-11-18: no 'All loci homozygous' flag; such a sample reports as is.
     ests = {g: _est([f"HLA-{g}*{x}\t-\t{COV_GOOD}\t-"]) for g, x in
             (('A', '02:01:01:01'), ('B', '07:02:01:01'), ('C', '07:02:01:01'))}
     final = "A\tHLA-A*02:01:01\t-\nB\tHLA-B*07:02:01\t-\nC\tHLA-C*07:02:01\t-\n"
     _write(tmp_path, 'S', final, ests)
     df = annotate_sample(tmp_path, 'S', pgroup_file)
-    assert set(df['call_status']) == {'Unique;QC review'}
-    assert set(df['flags']) == {'All loci homozygous'}
+    assert set(df['call_status']) == {'Unique'} and set(df['flags']) == {''}
 
 
 def test_two_homozygous_loci_are_normal(pgroup_file, tmp_path):

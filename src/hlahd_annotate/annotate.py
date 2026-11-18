@@ -10,7 +10,6 @@ from .parse_est import parse_est, cross_check_allele
 from .reporting import classify, two_field
 
 DEFAULT_MIN_EXON_DEPTH = 75.0
-ALL_HOMOZYGOUS_FLAG = 'All loci homozygous'
 INCOMPLETE_ALLELE_FLAG = 'Incomplete Allele'
 
 _EMPTY_COVERAGE = {'exon2_depth': None, 'exon2_incomp': None, 'exon2_incomplete': False,
@@ -183,20 +182,6 @@ def _annotate_locus(sample, locus, rows, result_dir, pgroup_lookup, alignment_di
     return recs, model
 
 
-def _flag_all_homozygous(models: dict) -> None:
-    """All class I loci typed and homozygous at two fields -> QC review."""
-    if set(models) != set(CLASS_I_LOCI):
-        return
-    for m in models.values():
-        g = m['two_field_genotype']
-        if 'Failed' in m['call_status'] or not g or ';' in g or len(set(g.split('/'))) != 1:
-            return
-    for m in models.values():
-        m['flags'].append(ALL_HOMOZYGOUS_FLAG)
-        if 'QC review' not in m['call_status']:
-            m['call_status'].append('QC review')
-
-
 def annotate_sample(
     result_dir: Path,
     sample: str,
@@ -229,7 +214,6 @@ def annotate_sample(
                                            alignment_dir, min_exon_depth,
                                            _exon_table(dictionary_dir, locus))
 
-    _flag_all_homozygous({locus: model for locus, (_, model) in per_locus.items()})
     records = []
     for recs, model in per_locus.values():
         model = {**model, 'call_status': ';'.join(model['call_status']),
