@@ -11,18 +11,27 @@ Call Status (one or more):
 Flags:
   Phase ambiguity      HLA-HD listed an '#Other ambiguous pair' (est.txt) that the
                        sequence test confirms is a phase conjugate of the reported
-                       pair over exons 2+3. Not testable (no alignment, allele
-                       missing) -> still flagged, trusting HLA-HD; phase_check says so.
-                       Identical over exons 2+3 -> no flag (information only).
+                       pair over exons 2+3 (or cannot test: no alignment, allele
+                       missing; phase_check says so), AND that HLA-HD could not test
+                       outside exons 2+3: every alternative allele is known only for
+                       exons 2+3 in HLA-HD's dictionary, or the dictionary is missing.
+                       If any alternative allele has other exons, HLA-HD scored it
+                       there and it lost: no flag, other_pair_evidence 'ruled_out'
+                       (grey note in the HTML). Identical over exons 2+3 -> no flag.
   Shared P-group       another read-tied best-pair genotype ('#Best allele pair')
                        has the same P-groups as the reported one
   Frequency tie        the frequency tiebreak left several genotypes
   Low exon depth       exon 2 or 3 mean depth below threshold, either allele
   Incomplete exon coverage
 Survey 2026-11-13 (504 full-depth samples, 40 '#Other' class I pairs): 36 phase
-conjugates, 1 identical over exons 2+3, 3 alleles absent from IMGT 3.65.0.
+conjugates, 1 identical over exons 2+3, 3 alleles absent from IMGT 3.65.0; with the
+2024 HLA-HD dictionary, 36 of the 40 alternatives had an allele known outside exons 2+3
+(ruled out) and 4 were exon 2+3 only (unresolved). Confirmed on Iris from hla_est logs
+2026-11-20: a C*07:19 alternative was scored on exons 1,5,6 and fell far behind; a
+C*12:98 alternative was the top allele over exons 2+3 and was never scored again.
 """
 from .alignment import phase_relation
+from .dictionary import known_beyond_exons_2_3
 from .pgroup import lookup_pgroup
 
 def two_field(allele: str) -> str:
@@ -53,13 +62,15 @@ def candidate_genotypes(slots: list[tuple[list, list]]) -> dict:
     return out
 
 
-def classify(final_pairs, est, pgroups, typed_exons, coverage, min_depth):
+def classify(final_pairs, est, pgroups, typed_exons, coverage, min_depth, exon_table=None):
     """Reporting fields for one locus.
 
     final_pairs: [(a1, a2)] from final.result.txt, None for 'Not typed'
     est: parse_est() result; pgroups: P-group lookup
     typed_exons: {allele: exon 2+3 columns} or None when no alignment was given
     coverage: coverage dicts of every reported allele
+    exon_table: HLA-HD dictionary ExonTable for the locus, or None (alternatives then
+    count as not ruled out, so Phase ambiguity is flagged as before)
     """
     pairs = [p for p in final_pairs if p[0] is not None and p[1] is not None]
     if not pairs:
@@ -79,8 +90,14 @@ def classify(final_pairs, est, pgroups, typed_exons, coverage, min_depth):
     competing = {g: r for g, r in cands.items() if g != primary}
     if _shares_pgroup(primary, competing, pgroups):
         flags.append('Shared P-group')
-    phase_check, phased, relations = _phase(reported[primary], est.get('other_pairs', []),
-                                            typed_exons, est.get('other_rows_unparsed', 0))
+    other_pairs, unparsed = est.get('other_pairs', []), est.get('other_rows_unparsed', 0)
+    phase_check, phased, relations = _phase(reported[primary], other_pairs, typed_exons, unparsed)
+    evidence = _other_evidence(other_pairs, unparsed, exon_table)
+    if phased:
+        # Same row order as relations; no alignment -> every row is a flagging row.
+        rels = relations or ['untestable'] * len(evidence)
+        phased = any(ev != 'ruled_out' for rel, ev in zip(rels, evidence)
+                     if rel in ('phase', 'untestable'))
     if phased:
         flags.insert(0, 'Phase ambiguity')
 
@@ -95,6 +112,7 @@ def classify(final_pairs, est, pgroups, typed_exons, coverage, min_depth):
         'frequency_resolution_details': details,
         'provenance': provenance, 'phase_check': phase_check,
         'other_pair_relation': ';'.join(relations),
+        'other_pair_evidence': ';'.join(evidence),
         'qc_evaluable': qc_evaluable,
     }
 
@@ -102,7 +120,8 @@ def classify(final_pairs, est, pgroups, typed_exons, coverage, min_depth):
 def _failed():
     return {'two_field_genotype': None, 'call_status': ['Failed'], 'flags': [],
             'frequency_resolution_details': None, 'provenance': 'final_only',
-            'phase_check': 'not_applicable', 'other_pair_relation': '', 'qc_evaluable': False}
+            'phase_check': 'not_applicable', 'other_pair_relation': '', 'other_pair_evidence': '',
+            'qc_evaluable': False}
 
 
 def _resolution(reported: dict, cands: dict):
@@ -165,6 +184,20 @@ def _phase(primary_rep, other_pairs: list, typed_exons, unparsed: int = 0):
         # flag, but the relation is reported so the HTML never calls 'different' identical.
         relations.append(relation)
     return ('evaluated' if complete else 'incomplete'), flag, relations
+
+
+def _other_evidence(other_pairs: list, unparsed: int, exon_table) -> list[str]:
+    """Per '#Other' row (unparsed rows first, as in _phase): 'ruled_out' when an allele of
+    the alternative has sequence outside exons 2-3 in HLA-HD's dictionary (HLA-HD scored it
+    there and it lost), 'unresolved' when every allele is exon 2-3 only (HLA-HD could not
+    test it further), 'not_evaluated' when there is no dictionary or an allele is absent."""
+    out = ['not_evaluated'] * unparsed
+    for pair in other_pairs:
+        known = [None if exon_table is None else known_beyond_exons_2_3(a, exon_table)
+                 for a in pair]
+        out.append('ruled_out' if any(k is True for k in known)
+                   else 'not_evaluated' if any(k is None for k in known) else 'unresolved')
+    return out
 
 
 def _qc(coverage: list[dict], min_depth: float):

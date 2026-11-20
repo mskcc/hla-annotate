@@ -56,7 +56,7 @@ These locus-level columns repeat on each allele row of the TSV.
 
 | Flag | When |
 |---|---|
-| Phase ambiguity | HLA-HD's `#Other ambiguous pair` is a phase conjugate of the reported pair: same unordered bases at every exon 2+3 position, opposite chromosomes (sequence test on the IMGT alignment). Untestable → still flagged, `phase_check` says so; identical over exons 2+3 → not flagged |
+| Phase ambiguity | HLA-HD's `#Other ambiguous pair` is a phase conjugate of the reported pair: same unordered bases at every exon 2+3 position, opposite chromosomes (sequence test on the IMGT alignment), **and** HLA-HD could not test it outside exons 2+3: every alternative allele is known only for exons 2+3 in HLA-HD's dictionary (`other_pair_evidence` `unresolved`), or the dictionary is missing or lacks an allele (`not_evaluated`). If any alternative allele has sequence on other exons, HLA-HD scored it there and it lost: not flagged, `other_pair_evidence` `ruled_out`, grey note in the HTML. Untestable over exons 2+3 → treated like a phase conjugate, `phase_check` says so; identical over exons 2+3 → not flagged |
 | Shared P-group | Another read-tied best-pair genotype (`#Best allele pair`) maps to the same P-groups |
 | Frequency tie | The frequency tiebreak left several genotypes |
 | Low exon depth | Exon 2 or 3 mean depth below `--min_exon_depth` for either allele |
@@ -72,7 +72,10 @@ ran (`evaluated`, `no_other_pair`, `not_evaluated`, `incomplete` when an allele 
 from the alignment or an `#Other` row could not be read; unreadable rows are flagged, never
 dropped). `other_pair_relation` gives each `#Other` row's result (`phase`, `identical`,
 `different`, `untestable`): a `different` row is a real alternative genotype, not a phase
-swap, and is not flagged, but the HTML says so. The HTML also shows
+swap, and is not flagged, but the HTML says so. `other_pair_evidence` gives each row's
+dictionary verdict (`ruled_out`, `unresolved`, `not_evaluated`; same order). In the
+504-sample survey (2024 HLA-HD dictionary) 36 of 40 alternatives were `ruled_out` and 4
+`unresolved`; HLA-HD's `hla_est` logs confirmed one of each on Iris. The HTML also shows
 `incomplete_allele_detail` whenever it is not empty (`not evaluated`, or an allele missing
 from the dictionary). `provenance` is `final_only` when `est.txt` is missing.
 `multiple_best_pairs` and `has_ambiguous_pair` are kept as raw `est.txt` indicators

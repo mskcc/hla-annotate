@@ -17,6 +17,7 @@
   .badge-darkred { background: #842029; color: #fff; border: 1px solid #842029; }
   .badge-green  { background: #d1e7dd; color: #0f5132; border: 1px solid #a3cfbb; }
   .badge-grey   { background: #e9ecef; color: #495057; border: 1px solid #ced4da; }
+  .note-grey { background: #e9ecef; color: #495057; border-left: 4px solid #adb5bd; padding: 6px 10px; }
   details { margin: 8px 0; }
   summary { cursor: pointer; font-weight: bold; }
   .note-box { background: #eef2ff; border-left: 4px solid #4a6cf7; padding: 12px; margin: 16px 0; }
@@ -95,7 +96,12 @@
       <p><strong>HLA-HD ambiguous pair (phase alternative, '#Other ambiguous pair'):</strong>
          {{ locus.ambiguous_alleles }}
          {% if 'different' in locus.other_pair_relation %}&#8212; differs from the reported pair at bases in exons 2&#8211;3: an alternative genotype, not a phase swap. Review the read evidence.
-         {% elif locus.other_pair_relation and 'Phase ambiguity' not in locus.flags %}&#8212; identical to the reported pair over exons 2&#8211;3, so not a phase difference.{% endif %}</p>
+         {% elif 'identical' in locus.other_pair_relation and 'phase' not in locus.other_pair_relation %}&#8212; identical to the reported pair over exons 2&#8211;3, so not a phase difference.{% endif %}</p>
+      {% if 'Phase ambiguity' in locus.flags and 'unresolved' in locus.other_pair_evidence %}
+      <p><strong>Not tested outside exons 2&#8211;3:</strong> the alternative pair's alleles are known only for exons 2&#8211;3 in the HLA-HD dictionary, so HLA-HD could not score them on any other exon. Over exons 2&#8211;3 they fit the reads as well as the reported pair; the reported pair was kept because it could be tested further, not because the reads favour it.</p>
+      {% elif 'Phase ambiguity' not in locus.flags and 'ruled_out' in locus.other_pair_evidence %}
+      <p class="note-grey"><strong>Alternative ruled out:</strong> an allele of the alternative pair has sequence outside exons 2&#8211;3 in the HLA-HD dictionary; HLA-HD scored it on those exons and it fit the reads worse than the reported pair. Shown for information, not flagged.</p>
+      {% endif %}
     {% endif %}
     {% if 'Incomplete Allele' in locus.flags %}
       <p><strong>Incomplete allele in the HLA-HD dictionary:</strong> {{ locus.incomplete_allele_detail }}</p>
@@ -103,7 +109,7 @@
       <p><strong>Incomplete allele check:</strong> {{ locus.incomplete_allele_detail }}
          &#8212; not confirmed complete (no HLA-HD dictionary given, or an allele was missing from it).</p>
     {% endif %}
-    {% if locus.phase_check in ['not_evaluated', 'incomplete'] %}
+    {% if locus.phase_check in ['not_evaluated', 'incomplete'] and 'Phase ambiguity' in locus.flags %}
       <p><strong>Phase ambiguity check:</strong> {{ locus.phase_check | replace('_', ' ') }}
          &#8212; flagged from HLA-HD's ambiguous pair but not confirmed by sequence
          (no IMGT alignment given, an allele was missing from it, or a row could not be read).</p>
@@ -132,7 +138,7 @@
   <strong>Failed:</strong> HLA-HD reported Not typed for the locus. No allele or P-group result is reported.<br>
   <br>
   <strong>Flags:</strong><br>
-  <strong>Phase ambiguity:</strong> Competing genotype assignments differ only in haplotype phase and are equally supported by the sequencing reads (HLA-HD's ambiguous pair, confirmed over exons 2&#8211;3 against IPD-IMGT/HLA).<br>
+  <strong>Phase ambiguity:</strong> Competing genotype assignments differ only in haplotype phase and are equally supported by the sequencing reads (HLA-HD's ambiguous pair, confirmed over exons 2&#8211;3 against IPD-IMGT/HLA), and the alternative could not be tested outside exons 2&#8211;3 because its alleles are known only for those exons. When an alternative allele has sequence on other exons, HLA-HD scored it there and it lost: the report shows a grey note instead of this flag.<br>
   <strong>Shared P-group:</strong> Competing two-field genotype assignments map to the same P-group and therefore encode identical peptide-binding domain amino acid sequences.<br>
   <strong>Frequency tie:</strong> Population-frequency ranking did not distinguish between the remaining read-supported genotype assignments; all remaining best-pair assignments are reported.<br>
   <strong>Low exon depth:</strong> HLA-HD mean coverage for exon 2 or exon 3 is below {{ min_exon_depth | int }}&times; for either allele.<br>

@@ -25,7 +25,7 @@ ANNOTATED_COLUMNS = [
     # Reporting model (locus-level values, repeated on each allele row).
     'two_field', 'two_field_genotype', 'call_status', 'flags',
     'frequency_resolution_details', 'provenance', 'phase_check', 'qc_evaluable',
-    'incomplete_allele_detail', 'other_pair_relation',
+    'incomplete_allele_detail', 'other_pair_relation', 'other_pair_evidence',
 ]
 # multiple_best_pairs / has_ambiguous_pair are raw est.txt indicators ('#Best allele
 # pair' > 1, '#Other ambiguous pair' present). Report call_status and flags instead.
@@ -175,7 +175,7 @@ def _annotate_locus(sample, locus, rows, result_dir, pgroup_lookup, alignment_di
         recs.append(_allele_record(sample, locus, r, est, pgroup_lookup, cov))
     reported_cov = [r for r in recs if not is_missing_allele(r['allele'])]
     model = classify(pairs, est, pgroup_lookup, _typed_exons(alignment_dir, locus, est, pairs),
-                     reported_cov, min_depth)
+                     reported_cov, min_depth, exon_table)
     flag, model['incomplete_allele_detail'] = _incomplete_allele(pairs, exon_table)
     if flag:
         model['flags'].append(INCOMPLETE_ALLELE_FLAG)

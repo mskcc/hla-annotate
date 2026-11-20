@@ -11,7 +11,7 @@ EXPECTED_COLUMNS = [
     'incomplete_bp', 'incomplete_coverage',
     'two_field', 'two_field_genotype', 'call_status', 'flags',
     'frequency_resolution_details', 'provenance', 'phase_check', 'qc_evaluable',
-    'incomplete_allele_detail', 'other_pair_relation',
+    'incomplete_allele_detail', 'other_pair_relation', 'other_pair_evidence',
 ]
 
 

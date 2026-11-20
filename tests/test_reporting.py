@@ -194,3 +194,64 @@ def test_missing_est_uses_final_only():
     r = run([P1], {}, cov=())
     assert r['provenance'] == 'final_only'
     assert r['call_status'] == ['Unique', 'QC review'] and r['qc_evaluable'] is False
+
+
+def _table(missing: dict, exons=range(1, 9)):
+    from hlahd_annotate.dictionary import ExonTable
+    t = ExonTable(missing)
+    t.exons = tuple(exons)
+    return t
+
+
+EXON_2_3_ONLY = [1, 4, 5, 6, 7, 8]
+
+
+def test_phase_alternative_with_other_exons_is_ruled_out_not_flagged(typed):
+    # A*02:02:01 has exon 4: HLA-HD scored it there and it lost -> grey note, no flag.
+    table = _table({'A*02:02:01': [1, 5, 6, 7, 8], 'A*03:02:01': EXON_2_3_ONLY})
+    r = classify([P1], est([P1], other=[P2]), PG, typed, [GOOD, GOOD], 75, table)
+    assert 'Phase ambiguity' not in r['flags']
+    assert r['other_pair_relation'] == 'phase' and r['other_pair_evidence'] == 'ruled_out'
+
+
+def test_phase_alternative_known_only_over_exons_2_3_stays_flagged(typed):
+    table = _table({'A*02:02:01': EXON_2_3_ONLY, 'A*03:02:01': EXON_2_3_ONLY})
+    r = classify([P1], est([P1], other=[P2]), PG, typed, [GOOD, GOOD], 75, table)
+    assert r['flags'] == ['Phase ambiguity'] and r['other_pair_evidence'] == 'unresolved'
+
+
+def test_phase_alternative_missing_from_dictionary_stays_flagged(typed):
+    table = _table({'A*03:02:01': EXON_2_3_ONLY})  # A*02:02:01 absent
+    r = classify([P1], est([P1], other=[P2]), PG, typed, [GOOD, GOOD], 75, table)
+    assert r['flags'] == ['Phase ambiguity'] and r['other_pair_evidence'] == 'not_evaluated'
+
+
+def test_no_dictionary_keeps_phase_flag(typed):
+    r = run([P1], est([P1], other=[P2]), typed=typed)
+    assert r['flags'] == ['Phase ambiguity'] and r['other_pair_evidence'] == 'not_evaluated'
+
+
+def test_one_unresolved_row_keeps_flag_even_if_another_is_ruled_out(typed):
+    other2 = ('A*02:02:01', 'A*03:02:01')
+    table = _table({'A*02:02:01': EXON_2_3_ONLY, 'A*03:02:01': EXON_2_3_ONLY})
+    e = {**est([P1], other=[P2, other2]), 'other_rows_unparsed': 0}
+    table2 = _table({**table, 'A*02:02:01': [1, 5, 6, 7, 8]})
+    assert classify([P1], e, PG, typed, [GOOD, GOOD], 75, table2)['flags'] == []
+    assert 'Phase ambiguity' in classify([P1], e, PG, typed, [GOOD, GOOD], 75, table)['flags']
+
+
+def test_unparsed_row_is_never_ruled_out(typed):
+    table = _table({'A*02:02:01': [1, 5, 6, 7, 8], 'A*03:02:01': EXON_2_3_ONLY})
+    e = {**est([P1], other=[P2]), 'other_rows_unparsed': 1}
+    r = classify([P1], e, PG, typed, [GOOD, GOOD], 75, table)
+    assert r['flags'] == ['Phase ambiguity']
+    assert r['other_pair_evidence'] == 'not_evaluated;ruled_out'
+
+
+def test_locus_exons_come_from_the_header():
+    # HLA-B has exons 1-7: an allele missing 1,4-7 is exon 2-3 only.
+    from hlahd_annotate.dictionary import known_beyond_exons_2_3
+    t = _table({'B*40:21': [1, 4, 5, 6, 7], 'B*15:01:01:01': []}, exons=range(1, 8))
+    assert known_beyond_exons_2_3('HLA-B*40:21', t) is False
+    assert known_beyond_exons_2_3('B*15:01:01:01', t) is True
+    assert known_beyond_exons_2_3('B*99:99', t) is None

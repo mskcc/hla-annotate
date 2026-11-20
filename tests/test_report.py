@@ -17,7 +17,7 @@ def _make_row(
     incomplete_bp=None,
     call_status='Unique', flags='', two_field_genotype='A*02:01/A*03:01',
     frequency_resolution_details=None, phase_check='no_competing',
-    other_pair_relation='', incomplete_allele_detail='',
+    other_pair_relation='', other_pair_evidence='', incomplete_allele_detail='',
 ):
     if exon2_incomplete is None:
         exon2_incomplete = bool(exon2_incomp)
@@ -44,6 +44,7 @@ def _make_row(
         'frequency_resolution_details': frequency_resolution_details,
         'phase_check': phase_check,
         'other_pair_relation': other_pair_relation,
+        'other_pair_evidence': other_pair_evidence,
         'incomplete_allele_detail': incomplete_allele_detail,
     }
 
@@ -131,8 +132,26 @@ def test_render_report_phase_ambiguity_badge(tmp_path):
 
 
 def test_render_report_phase_not_evaluated_is_stated(tmp_path):
-    html = _html(_pair(phase_check='not_evaluated'), tmp_path)
+    html = _html(_pair(phase_check='not_evaluated', flags='Phase ambiguity'), tmp_path)
     assert 'Phase ambiguity check:</strong> not evaluated' in html
+
+
+def test_render_report_ruled_out_alternative_is_a_grey_note_not_a_flag(tmp_path):
+    html = _html(_pair(ambiguous_alleles='HLA-C*07:19 / HLA-C*07:27:01', phase_check='evaluated',
+                       other_pair_relation='phase', other_pair_evidence='ruled_out'), tmp_path)
+    assert '<p class="note-grey"><strong>Alternative ruled out:</strong>' in html
+    assert '[Phase ambiguity]' not in html
+    assert 'identical to the reported pair' not in html  # a phase row is never called identical
+    assert 'Phase ambiguity check:' not in html
+
+
+def test_render_report_unresolved_alternative_keeps_flag_and_says_why(tmp_path):
+    html = _html(_pair(ambiguous_alleles='HLA-C*12:98 / HLA-C*16:15:01', phase_check='evaluated',
+                       flags='Phase ambiguity', other_pair_relation='phase',
+                       other_pair_evidence='unresolved'), tmp_path)
+    assert '[Phase ambiguity]' in html
+    assert 'Not tested outside exons 2&#8211;3:</strong>' in html
+    assert 'note-grey"><strong>Alternative ruled out' not in html
 
 
 def test_render_report_frequency_resolved_details(tmp_path):
