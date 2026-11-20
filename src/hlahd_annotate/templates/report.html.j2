@@ -15,6 +15,9 @@
   .badge-orange { background: #ffe5cc; color: #7d3c00; border: 1px solid #ff8800; }
   .badge-red    { background: #f8d7da; color: #842029; border: 1px solid #f5c2c7; }
   .badge-darkred { background: #842029; color: #fff; border: 1px solid #842029; }
+  .badge-green  { background: #d1e7dd; color: #0f5132; border: 1px solid #a3cfbb; }
+  .badge-grey   { background: #e9ecef; color: #495057; border: 1px solid #ced4da; }
+  .note-grey { background: #e9ecef; color: #495057; border-left: 4px solid #adb5bd; padding: 6px 10px; }
   details { margin: 8px 0; }
   summary { cursor: pointer; font-weight: bold; }
   .note-box { background: #eef2ff; border-left: 4px solid #4a6cf7; padding: 12px; margin: 16px 0; }
@@ -42,9 +45,11 @@
   <thead>
     <tr>
       <th>Locus</th>
+      <th>Two-field result</th>
       <th>Allele 1</th><th>P-group 1</th>
       <th>Allele 2</th><th>P-group 2</th>
       <th>Exon 2 cov</th><th>Exon 3 cov</th>
+      <th>Call status</th>
       <th>Flags</th>
     </tr>
   </thead>
@@ -52,6 +57,7 @@
   {% for locus in loci %}
     <tr>
       <td><strong>HLA-{{ locus.locus }}</strong></td>
+      <td>{{ locus.two_field_genotype }}</td>
       <td>{{ locus.allele1 or 'Not typed' }}</td>
       <td>{{ locus.p_group1 }}</td>
       <td>{{ locus.allele2 or 'Not typed' }}</td>
@@ -59,16 +65,13 @@
       <td>{{ locus.exon2_cov }}</td>
       <td>{{ locus.exon3_cov }}</td>
       <td>
-        {% for flag in locus.flags %}
-          {% if flag == 'AMBIGUOUS_PAIR' %}
-            <span class="badge badge-yellow">AMBIGUOUS PAIR</span>
-          {% elif flag == 'MULTIPLE_BEST_PAIRS' %}
-            <span class="badge badge-orange">MULTIPLE BEST PAIRS</span>
-          {% elif flag == 'EST_MISMATCH' %}
-            <span class="badge badge-red">EST MISMATCH</span>
-          {% elif flag == 'INCOMPLETE_COVERAGE' %}
-            <span class="badge badge-darkred">INCOMPLETE COVERAGE</span>
-          {% endif %}
+        {% for s in locus.call_status %}
+          <span class="badge {{ status_class.get(s, 'badge-yellow') }}">{{ s }}</span>
+        {% endfor %}
+      </td>
+      <td>
+        {% for f in locus.flags %}
+          <span class="badge {{ flag_class.get(f, 'badge-yellow') }}">{{ f }}</span>
         {% endfor %}
       </td>
     </tr>
@@ -76,22 +79,42 @@
   </tbody>
 </table>
 
-{% set flagged = loci | selectattr('flags') | list %}
-{% if flagged %}
-<h2>Flag Details</h2>
-{% for locus in flagged %}
+{% set detailed = [] %}
+{% for locus in loci if locus.flags or locus.frequency_resolution_details or locus.est_mismatch
+   or locus.ambiguous_alleles or locus.phase_check in ['not_evaluated', 'incomplete']
+   or locus.incomplete_allele_detail %}{% set _ = detailed.append(locus) %}{% endfor %}
+{% if detailed %}
+<h2>Details</h2>
+{% for locus in detailed %}
   <details open>
-    <summary>HLA-{{ locus.locus }}{% for f in locus.flags %} [{{ f }}]{% endfor %}</summary>
-    {% if 'AMBIGUOUS_PAIR' in locus.flags %}
-      <p><strong>Ambiguous pair (not selected):</strong> {{ locus.ambiguous_alleles }}</p>
+    <summary>HLA-{{ locus.locus }} &#8212; {{ locus.call_status | join(', ') }}{% for f in locus.flags %} [{{ f }}]{% endfor %}</summary>
+    {% if locus.frequency_resolution_details %}
+      <p><strong>Frequency resolution details</strong> (equally supported by the reads):
+         {{ locus.frequency_resolution_details }}</p>
     {% endif %}
-    {% if 'MULTIPLE_BEST_PAIRS' in locus.flags and locus.pair2_allele1 %}
-      <p><strong>Second best pair:</strong> {{ locus.pair2_allele1 }} / {{ locus.pair2_allele2 }}</p>
+    {% if locus.ambiguous_alleles %}
+      <p><strong>HLA-HD ambiguous pair (phase alternative, '#Other ambiguous pair'):</strong>
+         {{ locus.ambiguous_alleles }}
+         {% if 'different' in locus.other_pair_relation %}&#8212; differs from the reported pair at bases in exons 2&#8211;3: an alternative genotype, not a phase swap. Review the read evidence.
+         {% elif 'identical' in locus.other_pair_relation and 'phase' not in locus.other_pair_relation %}&#8212; identical to the reported pair over exons 2&#8211;3, so not a phase difference.{% endif %}</p>
+      {% if 'Phase ambiguity' in locus.flags and 'unresolved' in locus.other_pair_evidence %}
+      <p><strong>Not tested outside exons 2&#8211;3:</strong> the alternative pair's alleles are known only for exons 2&#8211;3 in the HLA-HD dictionary, so HLA-HD could not score them on any other exon. Over exons 2&#8211;3 they fit the reads as well as the reported pair; the reported pair was kept because it could be tested further, not because the reads favour it.</p>
+      {% elif 'Phase ambiguity' not in locus.flags and 'ruled_out' in locus.other_pair_evidence %}
+      <p class="note-grey"><strong>Alternative ruled out:</strong> an allele of the alternative pair has sequence outside exons 2&#8211;3 in the HLA-HD dictionary; HLA-HD scored it on those exons and it fit the reads worse than the reported pair. Shown for information, not flagged.</p>
+      {% endif %}
     {% endif %}
-    {% if 'EST_MISMATCH' in locus.flags %}
-      <p><strong>Est mismatch detail:</strong> <code>{{ locus.est_mismatch_detail }}</code></p>
+    {% if 'Incomplete Allele' in locus.flags %}
+      <p><strong>Incomplete allele in the HLA-HD dictionary:</strong> {{ locus.incomplete_allele_detail }}</p>
+    {% elif locus.incomplete_allele_detail %}
+      <p><strong>Incomplete allele check:</strong> {{ locus.incomplete_allele_detail }}
+         &#8212; not confirmed complete (no HLA-HD dictionary given, or an allele was missing from it).</p>
     {% endif %}
-    {% if 'INCOMPLETE_COVERAGE' in locus.flags %}
+    {% if locus.phase_check in ['not_evaluated', 'incomplete'] and 'Phase ambiguity' in locus.flags %}
+      <p><strong>Phase ambiguity check:</strong> {{ locus.phase_check | replace('_', ' ') }}
+         &#8212; flagged from HLA-HD's ambiguous pair but not confirmed by sequence
+         (no IMGT alignment given, an allele was missing from it, or a row could not be read).</p>
+    {% endif %}
+    {% if 'Low exon depth' in locus.flags or 'Incomplete exon coverage' in locus.flags %}
       <p><strong>Coverage (mean depth, incomplete positions):</strong></p>
       <ul>
         {% for line in locus.coverage_detail %}
@@ -99,24 +122,35 @@
         {% endfor %}
       </ul>
     {% endif %}
+    {% if locus.est_mismatch %}
+      <p><strong>Internal check &#8212; est.txt mismatch:</strong> <code>{{ locus.est_mismatch_detail }}</code></p>
+    {% endif %}
   </details>
 {% endfor %}
 {% endif %}
 
 <div class="note-box">
-  <strong>Flag definitions:</strong><br>
-  <strong>AMBIGUOUS PAIR:</strong> HLA-HD identified an equivalent allele combination. The displayed alleles were selected based on population frequency.<br>
-  <strong>MULTIPLE BEST PAIRS:</strong> HLA-HD could not disambiguate between equally-scored allele pairs.<br>
-  <strong>EST MISMATCH:</strong> Unexpected discrepancy between the final result allele and the alleles in the .est.txt file. Review manually.<br>
+  <strong>Call status:</strong><br>
+  <strong>Unique:</strong> A single genotype assignment remained after normalization to the reported (two-field) resolution.<br>
+  <strong>Frequency-resolved:</strong> Multiple genotype assignments were equally supported by the sequencing reads. HLA-HD selected the reported genotype using its population-frequency ranking; the alternative assignment(s) remain compatible with the sequencing evidence.<br>
+  <strong>Multiple best pairs:</strong> Multiple genotype assignments remained equally supported after population-frequency ranking. All remaining best-pair assignments are reported.<br>
+  <strong>QC review:</strong> HLA-HD generated a reportable genotype, but one or more coverage metrics meet the criteria for additional review. May be reported together with Unique, Frequency-resolved or Multiple best pairs.<br>
+  <strong>Failed:</strong> HLA-HD reported Not typed for the locus. No allele or P-group result is reported.<br>
   <br>
-  <strong>INCOMPLETE COVERAGE:</strong> One or more best-pair alleles had positions in exon 2 or exon 3 that HLA-HD reported as incomplete (any incomp status, even incomp.0). A "(!)" marks the affected allele, and the breakdown gives the number of incomplete bases. Lower-confidence call &#8212; review manually.
+  <strong>Flags:</strong><br>
+  <strong>Phase ambiguity:</strong> Competing genotype assignments differ only in haplotype phase and are equally supported by the sequencing reads (HLA-HD's ambiguous pair, confirmed over exons 2&#8211;3 against IPD-IMGT/HLA), and the alternative could not be tested outside exons 2&#8211;3 because its alleles are known only for those exons. When an alternative allele has sequence on other exons, HLA-HD scored it there and it lost: the report shows a grey note instead of this flag.<br>
+  <strong>Shared P-group:</strong> Competing two-field genotype assignments map to the same P-group and therefore encode identical peptide-binding domain amino acid sequences.<br>
+  <strong>Frequency tie:</strong> Population-frequency ranking did not distinguish between the remaining read-supported genotype assignments; all remaining best-pair assignments are reported.<br>
+  <strong>Low exon depth:</strong> HLA-HD mean coverage for exon 2 or exon 3 is below {{ min_exon_depth | int }}&times; for either allele.<br>
+  <strong>Incomplete Allele:</strong> A reported allele is missing one or more exons in the official HLA-HD dictionary (for example, only exons 2&#8211;4 are known), so its sequence outside those exons is not established.<br>
+  <strong>Incomplete exon coverage:</strong> HLA-HD identifies one or more positions without coverage in exon 2 or exon 3 for either allele. A "(!)" marks the affected allele.
 </div>
 
 {% if pileup %}
 <h2>Read Evidence at Discriminating / Mismatch Positions</h2>
 <p>Stacked read counts (A/C/G/T) at the positions that distinguish the called alleles.
    Hatched (top) = allele&nbsp;1's expected base; dotted = allele&nbsp;2's; solid = any other base;
-   red columns are low coverage. At est-mismatch / ambiguous positions the dotted segment
+   red columns are low coverage. At est-mismatch / alternative-pair positions the dotted segment
    shows the alternative allele's expected base rather than allele&nbsp;2's.</p>
 {% for locus in ['A', 'B', 'C'] if locus in pileup %}
   <div class="evidence">

@@ -17,6 +17,24 @@ def _cov_cell(a1, a2, exon):
     return ' / '.join(parts)
 
 
+STATUS_CLASS = {'Unique': 'badge-green', 'Frequency-resolved': 'badge-yellow',
+                'Multiple best pairs': 'badge-orange', 'QC review': 'badge-red',
+                'Failed': 'badge-darkred'}
+FLAG_CLASS = {'Phase ambiguity': 'badge-darkred', 'Shared P-group': 'badge-grey',
+              'Frequency tie': 'badge-orange', 'Low exon depth': 'badge-red',
+              'Incomplete exon coverage': 'badge-red',
+              'Incomplete Allele': 'badge-yellow'}
+
+
+def _split(value) -> list[str]:
+    """';'-joined TSV field -> list ([] for empty/NaN)."""
+    return [v for v in str(value).split(';') if v] if isinstance(value, str) else []
+
+
+def _text(value):
+    return value if isinstance(value, str) and value else None
+
+
 def _cov_detail(label, a):
     """Per-allele breakdown line, or None if no coverage present."""
     if a is None or (pd.isna(a.get('exon2_depth')) and pd.isna(a.get('exon3_depth'))):
@@ -42,6 +60,7 @@ def render_report(
     template_dir: Path,
     hlahd_version: str = 'v1.7.1',
     pileup: dict | None = None,
+    min_exon_depth: float = 75.0,
 ) -> Path:
     """Render Jinja2 HTML report for one sample. Returns path to written file."""
     env = Environment(loader=FileSystemLoader(str(template_dir)), autoescape=True)
@@ -62,17 +81,7 @@ def render_report(
         a1p2 = _get('allele1_pair2')
         a2p2 = _get('allele2_pair2')
 
-        flags = []
-        if a1 and a1['multiple_best_pairs']:
-            flags.append('MULTIPLE_BEST_PAIRS')
-        if a1 and a1['has_ambiguous_pair']:
-            flags.append('AMBIGUOUS_PAIR')
-        if (a1 and a1['est_mismatch']) or (a2 and a2['est_mismatch']):
-            flags.append('EST_MISMATCH')
-
-        if (a1 and a1.get('incomplete_coverage')) or (a2 and a2.get('incomplete_coverage')):
-            flags.append('INCOMPLETE_COVERAGE')
-
+        first = locus_df.iloc[0].to_dict()
         coverage_detail = [
             line for line in (_cov_detail('Allele 1', a1), _cov_detail('Allele 2', a2))
             if line
@@ -84,7 +93,15 @@ def render_report(
             'p_group1': a1['p_group'] if a1 and pd.notna(a1['p_group']) else '—',
             'allele2': a2['allele'] if a2 else None,
             'p_group2': a2['p_group'] if a2 and pd.notna(a2['p_group']) else '—',
-            'flags': flags,
+            'call_status': _split(first.get('call_status')),
+            'flags': _split(first.get('flags')),
+            'two_field_genotype': first.get('two_field_genotype') or '—',
+            'frequency_resolution_details': _text(first.get('frequency_resolution_details')),
+            'phase_check': first.get('phase_check'),
+            'incomplete_allele_detail': _text(first.get('incomplete_allele_detail')),
+            'other_pair_relation': _split(first.get('other_pair_relation')),
+            'other_pair_evidence': _split(first.get('other_pair_evidence')),
+            'est_mismatch': bool((a1 and a1['est_mismatch']) or (a2 and a2['est_mismatch'])),
             'ambiguous_alleles': a1['ambiguous_alleles'] if a1 else None,
             'est_mismatch_detail': (
                 (a1['est_mismatch_detail'] if a1 and a1['est_mismatch'] else None)
@@ -104,6 +121,9 @@ def render_report(
         run_date=date.today().isoformat(),
         hlahd_version=hlahd_version,
         pileup=pileup or {},
+        status_class=STATUS_CLASS,
+        flag_class=FLAG_CLASS,
+        min_exon_depth=min_exon_depth,
     )
 
     out_file = Path(outdir) / f"{sample}_report.html"

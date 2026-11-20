@@ -212,3 +212,24 @@ def test_parse_coverage_null_field_not_flagged():
     cov = _parse_coverage('-')
     assert cov['exon2_incomplete'] is False
     assert cov['exon3_incomplete'] is False
+
+
+def test_other_pair_with_comma_list_and_dash_is_kept(tmp_path):
+    f = tmp_path / 'x_A.est.txt'
+    f.write_text("#Pair count\t2\n#Best allele pair\t1\n"
+                 "HLA-A*02:01:01:01\tHLA-A*03:01:01:01\tcov\tcov\n"
+                 "#Other ambiguous pair\t2\n"
+                 "HLA-A*02:614:01,HLA-A*02:614:02\tHLA-A*68:164:02\n"
+                 "HLA-A*24:02:01:01\t-\n")
+    r = parse_est(f)
+    assert r['other_pairs'] == [('A*02:614:01', 'A*68:164:02'), ('A*24:02:01:01', 'A*24:02:01:01')]
+    assert r['other_rows_unparsed'] == 0
+    assert 'A*02:614:01 / A*68:164:02' in r['ambiguous_alleles']
+
+
+def test_other_pair_unparseable_row_is_counted(tmp_path):
+    f = tmp_path / 'x_A.est.txt'
+    f.write_text("#Best allele pair\t1\nHLA-A*02:01:01:01\tHLA-A*03:01:01:01\n"
+                 "#Other ambiguous pair\t1\n--\t--\n")
+    r = parse_est(f)
+    assert r['other_pairs'] == [] and r['other_rows_unparsed'] == 1
