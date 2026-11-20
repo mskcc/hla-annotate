@@ -13,8 +13,13 @@ Incomplete Allele.
 from pathlib import Path
 
 
-def load_exon_presence(dict_dir: Path, locus: str) -> dict[str, list[int]]:
-    """{allele name without 'HLA-': [missing exon numbers]} for one locus."""
+class ExonTable(dict):
+    """{allele name without 'HLA-': [missing exon numbers]}; .exons holds the locus's exon numbers."""
+    exons: tuple[int, ...] = ()
+
+
+def load_exon_presence(dict_dir: Path, locus: str) -> ExonTable:
+    """{allele name without 'HLA-': [missing exon numbers]} for one locus (an ExonTable)."""
     path = Path(dict_dir) / locus / f"{locus}.list"
     rows = [line.rstrip('\n').split('\t') for line in open(path)]
     header = next((r for r in rows if r and r[0].startswith('#HLA name')), None)
@@ -23,7 +28,8 @@ def load_exon_presence(dict_dir: Path, locus: str) -> dict[str, list[int]]:
     exons = [(i, int(h.removeprefix('exon'))) for i, h in enumerate(header) if h.startswith('exon')]
     if not exons:
         raise ValueError(f"no exon columns in HLA-HD dictionary list {path}")
-    table = {}
+    table = ExonTable()
+    table.exons = tuple(n for _, n in exons)
     for r in rows:
         if not r or r[0].startswith('#') or len(r) < len(header):
             continue
@@ -45,6 +51,19 @@ def missing_exons(allele: str, table: dict[str, list[int]]) -> list[int] | None:
     if not hits:
         return None
     return min(hits, key=len)
+
+
+def known_beyond_exons_2_3(allele: str, table: ExonTable) -> bool | None:
+    """True if the dictionary has sequence for this allele outside exons 2-3, False if
+    exons 2-3 are all it has, None if the allele is not in the dictionary.
+
+    HLA-HD scores an allele on every exon it has (Tree.h: a branch extends to the exons
+    of its alleles), so an '#Other' alternative with such an allele was tested there and lost.
+    """
+    missing = missing_exons(allele, table)
+    if missing is None:
+        return None
+    return bool(set(table.exons) - {2, 3} - set(missing))
 
 
 def fmt_exons(exons: list[int]) -> str:
