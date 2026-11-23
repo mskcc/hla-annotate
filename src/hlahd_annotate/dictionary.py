@@ -21,7 +21,8 @@ class ExonTable(dict):
 def load_exon_presence(dict_dir: Path, locus: str) -> ExonTable:
     """{allele name without 'HLA-': [missing exon numbers]} for one locus (an ExonTable)."""
     path = Path(dict_dir) / locus / f"{locus}.list"
-    rows = [line.rstrip('\n').split('\t') for line in open(path)]
+    with open(path) as f:
+        rows = [line.rstrip('\n').split('\t') for line in f]
     header = next((r for r in rows if r and r[0].startswith('#HLA name')), None)
     if header is None:
         raise ValueError(f"no '#HLA name' header in HLA-HD dictionary list {path}")

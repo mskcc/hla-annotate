@@ -3,6 +3,8 @@ from datetime import date
 import pandas as pd
 from jinja2 import Environment, FileSystemLoader
 
+from .annotate import DEFAULT_MIN_EXON_DEPTH
+
 
 def _cov_cell(a1, a2, exon):
     """Display string for one exon across both alleles, e.g. '262x / 12x(!)'."""
@@ -60,7 +62,7 @@ def render_report(
     template_dir: Path,
     hlahd_version: str = 'v1.7.1',
     pileup: dict | None = None,
-    min_exon_depth: float = 75.0,
+    min_exon_depth: float = DEFAULT_MIN_EXON_DEPTH,
 ) -> Path:
     """Render Jinja2 HTML report for one sample. Returns path to written file."""
     env = Environment(loader=FileSystemLoader(str(template_dir)), autoescape=True)
