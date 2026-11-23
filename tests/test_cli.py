@@ -85,7 +85,7 @@ def test_cli_version():
     result = subprocess.run(['annotate_hlahd', '--version'], capture_output=True, text=True)
     assert result.returncode == 0, result.stderr
     assert result.stdout.strip() == f"annotate_hlahd {version('hla-annotate')}"
-    assert version('hla-annotate') == '1.0.1'
+    assert version('hla-annotate') == '1.1.0'
 
 
 def test_cli_reports_incomplete_coverage(pgroup_file, tmp_path):

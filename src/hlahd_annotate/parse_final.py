@@ -1,12 +1,23 @@
 from pathlib import Path
 import re
-import warnings
 import pandas as pd
 
 CLASS_I_LOCI = {'A', 'B', 'C'}
 _NULL_VALUES = {'Not typed', '-', ''}
-# Positions for alleles: primary pair then optional second pair
-_PAIR_POSITIONS = ['allele1', 'allele2', 'allele1_pair2', 'allele2_pair2']
+
+
+def pair_position(index: int) -> str:
+    """allele_position for the index-th allele of a row: allele1, allele2,
+    allele1_pair2, allele2_pair2, allele1_pair3, ..."""
+    pair, slot = divmod(index, 2)
+    base = f"allele{slot + 1}"
+    return base if pair == 0 else f"{base}_pair{pair + 1}"
+
+
+def position_pair_index(position: str) -> tuple[int, int]:
+    """Inverse of pair_position: (pair index from 0, slot 0/1)."""
+    base, _, pair = position.partition('_pair')
+    return (int(pair) - 1 if pair else 0), int(base.removeprefix('allele')) - 1
 _ALLELE_RE = re.compile(
     r"(?:HLA-)?(?P<locus>[A-Za-z0-9]+)\*[0-9]{2,3}"
     r"(?::[0-9A-Za-z]+){1,3}"
@@ -90,29 +101,18 @@ def parse_final_result(result_file: Path) -> pd.DataFrame:
             alleles = parts[1:]
             multiple_best_pairs = len(alleles) > 2
 
-            if len(alleles) > len(_PAIR_POSITIONS):
-                warnings.warn(
-                    f"Row for locus {locus!r} has {len(alleles)} allele columns "
-                    f"(max supported: {len(_PAIR_POSITIONS)}); extra alleles ignored.",
-                    UserWarning,
-                    stacklevel=2,
-                )
-
-            # A normal HLA-HD row has a primary pair.  Keep an explicitly
-            # present trailing empty field, and supply a missing second slot
-            # when a malformed/truncated row contains only one allele field.
-            if alleles:
-                primary = normalize_allele_pair(
-                    alleles[0], alleles[1] if len(alleles) > 1 else '', locus)
-                normalized_pairs = [primary]
-                if len(alleles) > 2:
-                    normalized_pairs.append(normalize_allele_pair(
-                        alleles[2], alleles[3] if len(alleles) > 3 else '', locus))
-            else:
-                normalized_pairs = []
+            # Every reported pair is kept (HLA-HD prints all frequency-tied
+            # survivors). Keep an explicitly present trailing empty field, and
+            # supply a missing second slot when a row ends mid-pair.
+            normalized_pairs = [
+                normalize_allele_pair(
+                    alleles[i], alleles[i + 1] if i + 1 < len(alleles) else '', locus)
+                for i in range(0, len(alleles), 2)
+            ]
 
             normalized_alleles = [allele for pair in normalized_pairs for allele in pair]
-            for pos, allele_val in zip(_PAIR_POSITIONS, normalized_alleles):
+            positions = [pair_position(i) for i in range(len(normalized_alleles))]
+            for pos, allele_val in zip(positions, normalized_alleles):
                 if allele_val is not None:
                     fields = allele_val.removeprefix('HLA-').split(':')
                     resolution = len(fields)

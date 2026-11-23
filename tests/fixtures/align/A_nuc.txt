@@ -1,0 +1,25 @@
+# file: A_nuc.txt
+# synthetic IPD-IMGT/HLA-style alignment for tests (two blocks, '|' exon boundaries)
+# exon1 ATG | exon2 ACGTAC | exon3 GGCC | exon4 TT
+
+ cDNA              1
+ AA codon          -24
+                   |
+ A*01:01:01:01     ATG|ACG TAC
+ A*02:01:01:01     ---|-T- -G-
+ A*03:01:01:01     ---|--- ---
+ A*02:02:01        ---|-T- ---
+ A*03:02:01        ---|--- -G-
+ A*02:99:01        ---|-T- -G-
+ A*02:50           ***|*** -G-
+
+ cDNA              10
+ AA codon          4
+
+ A*01:01:01:01     |GGC C|TT
+ A*02:01:01:01     |--- -|--
+ A*03:01:01:01     |--- -|--
+ A*02:02:01        |--- -|--
+ A*03:02:01        |--- -|--
+ A*02:99:01        |--- -|-A
+ A*02:50           |--- -|**

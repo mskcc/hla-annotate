@@ -18,7 +18,7 @@ from pathlib import Path
 
 import pandas as pd
 
-from hlahd_annotate.annotate import annotate_sample
+from hlahd_annotate.annotate import DEFAULT_MIN_EXON_DEPTH, annotate_sample
 from hlahd_annotate.report import render_report
 
 TEMPLATE_DIR = Path(__file__).parent / "templates"
@@ -42,14 +42,41 @@ def parse_args():
                    help='HLA-HD version string for the report footer (default: v1.7.1)')
     p.add_argument('--skip_html', action='store_true',
                    help='Skip generating the HTML report; write only the annotated TSV')
+    p.add_argument('--imgt_alignment_dir', type=Path, default=None,
+                   help='Directory with IPD-IMGT/HLA alignments/{A,B,C}_nuc.txt (same release as '
+                        '--pgroup_file); enables the Phase ambiguity test')
+    p.add_argument('--hlahd_dictionary_dir', type=Path, default=None,
+                   help="HLA-HD's dictionary/ directory (holds <GENE>/<GENE>.list), the one the run "
+                        "used; enables the Incomplete Allele flag")
+    p.add_argument('--min_exon_depth', type=float, default=DEFAULT_MIN_EXON_DEPTH,
+                   help=f'Low exon depth threshold: exon 2/3 mean depth (default: {DEFAULT_MIN_EXON_DEPTH:g})')
     return p.parse_args()
+
+
+def _summarize(df: pd.DataFrame) -> None:
+    """Counts line per sample; names loci whose phase test could not run."""
+    loci = df.drop_duplicates('locus')
+    counts = loci['call_status'].str.split(';').explode().value_counts()
+    print("CALL STATUS: " + ', '.join(f"{k}={v}" for k, v in counts.items()), file=sys.stderr)
+    skipped = loci[loci['phase_check'].isin(['not_evaluated', 'incomplete'])]
+    for _, r in skipped.iterrows():
+        print(f"WARNING: Phase ambiguity not fully evaluated for locus {r['locus']} "
+              f"({r['phase_check']})", file=sys.stderr)
 
 
 def main():
     args = parse_args()
     args.outdir.mkdir(parents=True, exist_ok=True)
 
-    df = annotate_sample(args.result_dir, args.sample, args.pgroup_file)
+    df = annotate_sample(args.result_dir, args.sample, args.pgroup_file,
+                         alignment_dir=args.imgt_alignment_dir,
+                         min_exon_depth=args.min_exon_depth,
+                         dictionary_dir=args.hlahd_dictionary_dir)
+    if args.hlahd_dictionary_dir is None:
+        print("WARNING: --hlahd_dictionary_dir not given; Incomplete Allele not evaluated",
+              file=sys.stderr)
+    if not df.empty:
+        _summarize(df)
 
     incomplete = df[df['incomplete_coverage'].astype(bool)]
     if not incomplete.empty:
@@ -66,7 +93,8 @@ def main():
 
     if not args.skip_html:
         html_path = render_report(df, args.sample, str(args.pgroup_file), args.outdir, TEMPLATE_DIR,
-                                  hlahd_version=args.hlahd_version)
+                                  hlahd_version=args.hlahd_version,
+                                  min_exon_depth=args.min_exon_depth)
         print(f"HTML written: {html_path}")
 
 
