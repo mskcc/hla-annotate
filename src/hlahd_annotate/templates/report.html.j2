@@ -19,6 +19,7 @@
   .badge-grey   { background: #e9ecef; color: #495057; border: 1px solid #ced4da; }
   .note-grey { background: #e9ecef; color: #495057; border-left: 4px solid #adb5bd; padding: 6px 10px; }
   details { margin: 8px 0; }
+  .locus-detail { margin: 8px 0 16px; }
   summary { cursor: pointer; font-weight: bold; }
   .note-box { background: #eef2ff; border-left: 4px solid #4a6cf7; padding: 12px; margin: 16px 0; }
   .evidence { margin: 18px 0 28px; padding: 14px; border: 1px solid #e3e3e3; border-radius: 8px; background: #fcfcfd; }
@@ -58,9 +59,9 @@
     <tr>
       <td><strong>HLA-{{ locus.locus }}</strong></td>
       <td>{{ locus.two_field_genotype }}</td>
-      <td>{{ locus.allele1 or 'Not typed' }}</td>
+      <td>{{ (locus.allele1 | replace('HLA-', '')) if locus.allele1 else 'Not typed' }}</td>
       <td>{{ locus.p_group1 }}</td>
-      <td>{{ locus.allele2 or 'Not typed' }}</td>
+      <td>{{ (locus.allele2 | replace('HLA-', '')) if locus.allele2 else 'Not typed' }}</td>
       <td>{{ locus.p_group2 }}</td>
       <td>{{ locus.exon2_cov }}</td>
       <td>{{ locus.exon3_cov }}</td>
@@ -86,8 +87,8 @@
 {% if detailed %}
 <h2>Details</h2>
 {% for locus in detailed %}
-  <details open>
-    <summary>HLA-{{ locus.locus }} &#8212; {{ locus.call_status | join(', ') }}{% for f in locus.flags %} [{{ f }}]{% endfor %}</summary>
+  <div class="locus-detail">
+    <h3>HLA-{{ locus.locus }} &#8212; {{ locus.call_status | join(', ') }}{% for f in locus.flags %} [{{ f }}]{% endfor %}</h3>
     {% if locus.frequency_resolution_details %}
       <p><strong>Frequency resolution details</strong> (equally supported by the reads):
          {{ locus.frequency_resolution_details }}</p>
@@ -125,7 +126,7 @@
     {% if locus.est_mismatch %}
       <p><strong>Internal check &#8212; est.txt mismatch:</strong> <code>{{ locus.est_mismatch_detail }}</code></p>
     {% endif %}
-  </details>
+  </div>
 {% endfor %}
 {% endif %}
 

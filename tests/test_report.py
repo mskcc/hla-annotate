@@ -327,3 +327,13 @@ def test_render_report_allele_absent_from_dictionary_is_stated(tmp_path):
 
 def test_render_report_complete_allele_has_no_incomplete_allele_line(tmp_path):
     assert 'Incomplete allele' not in _html(_pair(), tmp_path)
+
+
+def test_render_report_allele_cells_drop_hla_prefix(tmp_path):
+    html = _html(_pair(), tmp_path)
+    assert '<td>A*02:01:01</td>' in html and '<td>HLA-A*02:01:01</td>' not in html
+
+
+def test_render_report_details_are_not_collapsible(tmp_path):
+    html = _html(_pair(flags='Phase ambiguity', phase_check='evaluated'), tmp_path)
+    assert '<div class="locus-detail">' in html and '<details' not in html
